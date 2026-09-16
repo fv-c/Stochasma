@@ -11,8 +11,8 @@
 - Add time-indexed categorical forward diffusion through cumulative `Qbar_t`
   kernels.
 - Add exact categorical posterior probabilities.
-- Add predicted-`x0` reverse probabilities and categorical reverse-step
-  sampling.
+- Add categorical reverse-step sampling and canonical joint-marginalized
+  predicted-`x0` reverse probabilities.
 
 ## 0.2.0 — 2026-09-16
 

@@ -104,6 +104,11 @@ previousState = categoricalReverseStep[
 ];
 ```
 
+`predictedX0` is a model-predicted distribution over clean categories.
+Stochasma combines it with `Q̄_(t-1)` and `Q_t`, then normalizes the resulting
+joint-marginalized reverse weights once at the end. It is not a mixture of
+individually normalized exact posteriors.
+
 ## Time embeddings
 
 `sinusoidalTimeEmbedding` maps a non-negative scalar time to cosine and sine

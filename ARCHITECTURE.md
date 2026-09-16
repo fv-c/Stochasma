@@ -95,17 +95,23 @@ q(x_(t-1) = j | x_t = k, x_0 = i)
 
 At `t = 1`, `Q̄_0` is the identity matrix and does not index the schedule.
 The model predicts a probability distribution on `x_0`, rather than the
-reverse-step posterior directly. The reverse probabilities marginalize the
-exact posterior:
+reverse-step posterior directly. The canonical predicted-`x0` reverse
+parameterization marginalizes the joint probabilities and normalizes once:
 
 ```text
 p_theta(x_(t-1) | x_t)
-  = Σ_i p_theta(x_0 = i | x_t, t) q(x_(t-1) | x_t, x_0 = i)
+  ∝ Σ_i p_theta(x_0 = i | x_t, t) q(x_(t-1), x_t | x_0 = i)
+
+r = [p_theta(x_0 | x_t, t) . Q̄_(t-1)] ⊙ Q_t[:, x_t]
+
+p_theta(x_(t-1) | x_t) = r / sum(r)
 ```
 
-`categoricalReverseStep` samples once from this marginalized probability
-vector. A multi-step categorical reverse sampler is not part of version 0.3.0
-yet.
+Here `⊙` denotes elementwise multiplication. At `t = 1`, `Q̄_0` is the
+identity, so the predicted clean-state probabilities are still weighted by
+the current transition likelihood before normalization. `categoricalReverseStep`
+samples once from this joint-marginalized probability vector. A multi-step
+categorical reverse sampler is not part of version 0.3.0 yet.
 
 ## Invariants
 
