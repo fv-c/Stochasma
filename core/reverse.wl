@@ -11,6 +11,9 @@ predictCleanSample::usage =
 reverseMeanVariance::usage =
   "reverseMeanVariance[xt, t, predictedNoise, schedule] returns an Association with \"PredictedX0\", the deterministic DDPM posterior \"Mean\", and scalar posterior \"Variance\" for q(x_(t-1) | x_t, x0-hat).";
 
+reverseDiffuseStep::usage =
+  "reverseDiffuseStep[xt, t, predictedNoise, schedule] samples one DDPM step from t to t-1. The five-argument form uses explicit same-shape noise deterministically; at t = 1 no noise is added.";
+
 Begin["`Private`"]
 
 numericSamplesCloseQ[left_, right_, tolerance_ : 10^-10] := Quiet[Check[
@@ -111,11 +114,52 @@ reverseMeanVariance[___] := (
   $Failed
 );
 
+reverseDiffuseStep::noise =
+  "Noise must be a finite real numeric sample with the same shape as xt.";
+reverseDiffuseStep::args =
+  "reverseDiffuseStep expects xt, an Integer time in 1 through T, predictedNoise, a diffusion schedule, and optional explicit noise.";
+
+reverseDiffuseStep[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association
+] := Module[{posterior, noise},
+  posterior = reverseMeanVariance[xt, t, predictedNoise, schedule];
+  If[posterior === $Failed, Return[$Failed]];
+  If[t == 1, Return[posterior["Mean"]]];
+  noise = BlockRandom[randomNormalLike[xt]];
+  posterior["Mean"] + Sqrt[posterior["Variance"]] noise
+];
+
+reverseDiffuseStep[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association,
+  noise_
+] := Module[{posterior},
+  posterior = reverseMeanVariance[xt, t, predictedNoise, schedule];
+  If[posterior === $Failed, Return[$Failed]];
+  If[!sameSampleShapeQ[xt, noise],
+    Message[reverseDiffuseStep::noise];
+    Return[$Failed]
+  ];
+  If[t == 1, Return[posterior["Mean"]]];
+  posterior["Mean"] + Sqrt[posterior["Variance"]] noise
+];
+
+reverseDiffuseStep[___] := (
+  Message[reverseDiffuseStep::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runReverseTests[] := Module[
   {passed = 0, assert, schedule, t, samples, noises, noisySamples,
-    reconstructions, posterior, expectedMean, firstPosterior},
+    reconstructions, posterior, expectedMean, firstPosterior, explicitNoise,
+    reverseStep, baseline, withCall},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ reverse/predictCleanSample: ", label];
@@ -230,6 +274,78 @@ runReverseTests[] := Module[
     ] === $Failed &&
       Quiet[
         reverseMeanVariance[samples[[2]], 9, noises[[2]], schedule]
+      ] === $Failed
+  ];
+
+  explicitNoise = {0.4, -0.3, 0.2};
+  reverseStep = reverseDiffuseStep[
+    noisySamples[[2]],
+    t,
+    noises[[2]],
+    schedule,
+    explicitNoise
+  ];
+  assert[
+    "explicit-noise step matches posterior mean plus standard deviation noise",
+    numericSamplesCloseQ[
+      reverseStep,
+      posterior["Mean"] + Sqrt[posterior["Variance"]] explicitNoise
+    ]
+  ];
+  assert[
+    "explicit-noise reverse step is deterministic",
+    reverseStep === reverseDiffuseStep[
+      noisySamples[[2]], t, noises[[2]], schedule, explicitNoise
+    ]
+  ];
+  assert[
+    "t = 1 adds no noise",
+    numericSamplesCloseQ[
+      reverseDiffuseStep[
+        forwardDiffuse[samples[[2]], 1, schedule, noises[[2]]],
+        1,
+        noises[[2]],
+        schedule,
+        ConstantArray[10.^6, 3]
+      ],
+      samples[[2]]
+    ]
+  ];
+  assert[
+    "reverse step preserves scalar vector matrix and tensor shapes",
+    And @@ MapThread[
+      Dimensions[
+        reverseDiffuseStep[#1, t, #2, schedule, 0. #1]
+      ] === Dimensions[#1] &,
+      {noisySamples, noises}
+    ]
+  ];
+  baseline = BlockRandom[SeedRandom[5678]; {RandomReal[], RandomReal[]}];
+  withCall = BlockRandom[
+    SeedRandom[5678];
+    {
+      RandomReal[],
+      reverseDiffuseStep[noisySamples[[2]], t, noises[[2]], schedule];
+      RandomReal[]
+    }
+  ];
+  assert[
+    "generated reverse noise does not advance caller random state",
+    baseline === withCall
+  ];
+  assert[
+    "reverse step rejects invalid explicit-noise shape",
+    Quiet[
+      reverseDiffuseStep[noisySamples[[2]], t, noises[[2]], schedule, {0.}]
+    ] === $Failed
+  ];
+  assert[
+    "reverse step rejects times outside 1 through T",
+    Quiet[
+      reverseDiffuseStep[samples[[2]], 0, noises[[2]], schedule]
+    ] === $Failed &&
+      Quiet[
+        reverseDiffuseStep[samples[[2]], 9, noises[[2]], schedule]
       ] === $Failed
   ];
 
