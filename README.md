@@ -190,11 +190,14 @@ sample = ddimSample[
 ```
 
 Explicit timesteps must be non-empty, valid, and strictly decreasing; the
-sampler always adds the final transition to logical time `0`. Explicit
-`"Noises"` must have the same length and order as the resolved timestep list.
-Its final entry is validated but ignored because the transition to `x0` adds
-no noise. With `"ReturnTrajectory" -> True`, trajectory states and returned
-timesteps align as `{xStart, ..., x0}` and `{tStart, ..., 0}`.
+sampler always adds the final transition to logical time `0`. `initialNoise`
+is interpreted as the state at the first resolved timestep. With automatic
+timesteps this is `xT`; with an explicit sequence beginning below `T`, it is
+the state at that first requested logical time. Explicit `"Noises"` must have
+the same length and order as the resolved timestep list. Its final entry is
+validated but ignored because the transition to `x0` adds no noise. With
+`"ReturnTrajectory" -> True`, trajectory states and returned timesteps align
+as `{xStart, ..., x0}` and `{tStart, ..., 0}`.
 
 ## Tests and example
 

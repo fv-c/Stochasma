@@ -10,7 +10,7 @@ If[
 BeginPackage["Stochasma`"]
 
 ddimSample::usage =
-  "ddimSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] at each requested logical time and returns x0. \"Timesteps\" is Automatic or a non-empty strictly decreasing list in 1..T; \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xStart, ..., x0}, \"Timesteps\" -> {tStart, ..., 0}|>. \"Eta\" -> 0 is deterministic. For positive eta, Automatic noises use the current stream or a locally isolated Integer \"Seed\". Explicit \"Noises\" has the same length and order as \"Timesteps\"; its final entry is validated but ignored because the transition to time 0 adds no noise.";
+  "ddimSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] at each requested logical time and returns x0. initialNoise is the state at the first resolved timestep: with Automatic \"Timesteps\" it is xT, while an explicit sequence beginning below T interprets it at that first requested logical time. \"Timesteps\" is Automatic or a non-empty strictly decreasing list in 1..T; \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xStart, ..., x0}, \"Timesteps\" -> {tStart, ..., 0}|>. \"Eta\" -> 0 is deterministic. For positive eta, Automatic noises use the current stream or a locally isolated Integer \"Seed\". Explicit \"Noises\" has the same length and order as \"Timesteps\"; its final entry is validated but ignored because the transition to time 0 adds no noise.";
 
 Begin["`Private`"]
 
