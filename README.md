@@ -11,7 +11,7 @@ Python dependency.
 
 ## Status
 
-Version `0.2.0` provides:
+The unreleased development version `0.3.0` currently provides:
 
 - linear and cosine beta schedules;
 - canonical DDPM schedule coefficients;
