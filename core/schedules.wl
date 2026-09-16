@@ -101,6 +101,8 @@ cosineBetaSchedule[steps_, opts___] := Module[
 
 makeDiffusionSchedule::betas =
   "Betas must be a non-empty list of finite real numbers strictly between 0 and 1.";
+makeDiffusionSchedule::numeric =
+  "The supplied beta values cannot produce a finite, internally consistent diffusion schedule after numerical evaluation.";
 
 derivedScheduleValues[betas_List] := Module[
   {alphas, alphaBars, previousAlphaBars, posteriorVariances,
@@ -158,7 +160,8 @@ diffusionScheduleQ[schedule_Association] := Module[
 
 diffusionScheduleQ[_] := False;
 
-makeDiffusionSchedule[betas_List] := Module[{numericBetas, derived},
+makeDiffusionSchedule[betas_List] := Module[
+  {numericBetas, derived, schedule},
   If[
     betas === {} ||
       !AllTrue[betas, finiteRealNumberQ[#] && TrueQ[0 < # < 1] &],
@@ -166,11 +169,16 @@ makeDiffusionSchedule[betas_List] := Module[{numericBetas, derived},
     Return[$Failed]
   ];
   numericBetas = N[betas];
-  derived = derivedScheduleValues[numericBetas];
-  Join[
+  derived = Quiet[Check[derivedScheduleValues[numericBetas], <||>]];
+  schedule = Join[
     <|"Steps" -> Length[numericBetas], "Betas" -> numericBetas|>,
     derived
-  ]
+  ];
+  If[!diffusionScheduleQ[schedule],
+    Message[makeDiffusionSchedule::numeric];
+    Return[$Failed]
+  ];
+  schedule
 ];
 
 makeDiffusionSchedule[___] := (
@@ -182,7 +190,8 @@ makeDiffusionSchedule[___] := (
 
 runSchedulesTests[] := Module[
   {passed = 0, assert, betas, cosineBetas, schedule, alphaBars,
-    previousAlphaBars},
+    previousAlphaBars, standardSchedule, pathologicalResult,
+    numericMessage},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ schedules/linearBetaSchedule: ", label];
@@ -297,6 +306,35 @@ runSchedulesTests[] := Module[
   assert[
     "canonical schedule passes structural coherence validation",
     diffusionScheduleQ[schedule]
+  ];
+  standardSchedule = makeDiffusionSchedule[
+    linearBetaSchedule[1000, 10^-4, 0.02]
+  ];
+  assert[
+    "standard 1000-step schedule remains numerically valid",
+    AssociationQ[standardSchedule] &&
+      standardSchedule["Steps"] === 1000 &&
+      diffusionScheduleQ[standardSchedule]
+  ];
+  pathologicalResult = Quiet[
+    makeDiffusionSchedule[{10^-100}],
+    makeDiffusionSchedule::numeric
+  ];
+  assert[
+    "machine-degenerate beta schedule fails instead of returning coefficients",
+    pathologicalResult === $Failed
+  ];
+  numericMessage = Quiet[
+    Check[
+      makeDiffusionSchedule[{10^-100}],
+      "numeric-message",
+      makeDiffusionSchedule::numeric
+    ],
+    makeDiffusionSchedule::numeric
+  ];
+  assert[
+    "machine-degenerate beta schedule emits the specific numeric message",
+    numericMessage === "numeric-message"
   ];
   assert[
     "invalid beta lists and malformed schedules fail",
