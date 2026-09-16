@@ -6,6 +6,8 @@ Stochasma provides general-purpose diffusion-model primitives for the Wolfram
 Language. Version 0.1 implements Gaussian diffusion / DDPM without assumptions
 about images, music, or a particular neural-network architecture. Version 0.2
 adds model-facing utilities and DDIM sampling while preserving that separation.
+Version 0.3 begins a discrete diffusion layer with uniform categorical
+transition kernels and shape-preserving forward sampling.
 
 ## Layers
 
@@ -71,6 +73,10 @@ network architecture or input layout.
 - The core has no dependency on `NetGraph`, `NetTrain`, or a model architecture.
 - Invalid parameters produce a message and `$Failed`; they are not silently
   clipped into a valid range.
+- Categorical states are represented by integer labels `1..K`, and categorical
+  transition kernels are finite, non-negative, square, and row-stochastic.
+- Categorical forward sampling preserves scalar or array shape and accepts
+  matching explicit uniform variates in `[0, 1)`.
 
 ## Module map
 
@@ -81,7 +87,7 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
-core/categorical.wl uniform categorical transition kernels
+core/categorical.wl categorical transition kernels and forward sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

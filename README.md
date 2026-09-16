@@ -26,7 +26,20 @@ The unreleased development version `0.3.0` currently provides:
 - batched epsilon-prediction training data with controlled randomness;
 - deterministic or controlled-stochastic DDIM sampling over full or
   subsampled reverse timesteps;
-- a uniform categorical transition kernel.
+- a uniform categorical transition kernel;
+- shape-preserving categorical forward diffusion with automatic or explicit
+  uniform noise.
+
+## Categorical diffusion
+
+`categoricalForwardDiffuse` samples integer category labels `1..K` through any
+validated `K`-by-`K` row-stochastic transition kernel. The explicit-noise form
+is deterministic and preserves the shape of categorical arrays:
+
+```wl
+kernel = uniformCategoricalTransitionKernel[3, 0.2];
+xt = categoricalForwardDiffuse[{1, 2, 3}, kernel, {0.1, 0.5, 0.9}];
+```
 
 ## Time embeddings
 

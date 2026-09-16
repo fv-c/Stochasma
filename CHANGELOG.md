@@ -3,6 +3,8 @@
 ## 0.3.0 — Unreleased
 
 - Add a uniform categorical transition kernel.
+- Add shape-preserving categorical forward diffusion with automatic or
+  explicit uniform noise.
 
 ## 0.2.0 — 2026-09-16
 
