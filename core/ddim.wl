@@ -2,6 +2,10 @@ If[
   DownValues[Stochasma`predictCleanSample] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "reverse.wl"}]]
 ];
+If[
+  DownValues[Stochasma`ddpmSample] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "sampling.wl"}]]
+];
 
 BeginPackage["Stochasma`"]
 
@@ -262,7 +266,9 @@ runDDIMTests[] := Module[
     fullNoises, fullResult, fullTrace, sparseTimesteps, sparseNoises,
     sparseTrace, manualEta, manualStep, manualExpected, sample, result,
     samples, stochasticInitial, automatic1, automatic2, seeded1, seeded2,
-    differentSeed, expectedNext, actualNext, changedFinalNoise},
+    differentSeed, expectedNext, actualNext, changedFinalNoise,
+    sigmaSquared, ancestralPredictor, ddpmNoises, ddimNoises, ddpmResult,
+    ddimResult},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ ddim/ddimSample: ", label];
@@ -298,6 +304,56 @@ runDDIMTests[] := Module[
   assert[
     "full-step predictor calls descend from T through 1",
     fullTrace === fullTimesteps
+  ];
+
+  sigmaSquared = Table[
+    With[
+      {
+        alphaBarT = schedule["AlphaBars"][[time]],
+        alphaBarPrevious = If[
+          time == 1,
+          1.,
+          schedule["AlphaBars"][[time - 1]]
+        ]
+      },
+      (1 - alphaBarPrevious)/(1 - alphaBarT)
+        (1 - alphaBarT/alphaBarPrevious)
+    ],
+    {time, schedule["Steps"]}
+  ];
+  assert[
+    "eta one consecutive-step variance equals DDPM posterior variance",
+    numericSamplesCloseQ[
+      sigmaSquared,
+      schedule["PosteriorVariances"]
+    ]
+  ];
+  ancestralPredictor = Function[
+    {state, time},
+    0.2 state + 0.01 time {1., -0.5, 0.25}
+  ];
+  ddpmNoises = Table[
+    {Sin[time], Cos[time], (time - 5.)/7.},
+    {time, schedule["Steps"]}
+  ];
+  ddimNoises = Reverse[ddpmNoises];
+  ddpmResult = ddpmSample[
+    ancestralPredictor,
+    initialNoise,
+    schedule,
+    "Noises" -> ddpmNoises
+  ];
+  ddimResult = ddimSample[
+    ancestralPredictor,
+    initialNoise,
+    schedule,
+    "Eta" -> 1.,
+    "Timesteps" -> fullTimesteps,
+    "Noises" -> ddimNoises
+  ];
+  assert[
+    "eta one full schedule matches DDPM with corresponding noises",
+    numericSamplesCloseQ[ddimResult, ddpmResult]
   ];
 
   sparseTimesteps = {10, 7, 4, 1};
