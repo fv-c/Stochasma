@@ -110,8 +110,14 @@ p_theta(x_(t-1) | x_t) = r / sum(r)
 Here `⊙` denotes elementwise multiplication. At `t = 1`, `Q̄_0` is the
 identity, so the predicted clean-state probabilities are still weighted by
 the current transition likelihood before normalization. `categoricalReverseStep`
-samples once from this joint-marginalized probability vector. A multi-step
-categorical reverse sampler is not part of version 0.3.0 yet.
+samples once from this joint-marginalized probability vector.
+
+The categorical sampler traverses `T, T-1, ..., 1`. At each logical time it
+calls `predictor[xt, t]` for a probability distribution over clean categories,
+then samples the next state through `categoricalReverseStep`. A returned
+trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit uniform variates use a
+length-`T` list indexed by logical time, and every entry is consumed because
+the categorical transition at `t = 1` remains stochastic in general.
 
 ## Invariants
 
@@ -135,6 +141,9 @@ categorical reverse sampler is not part of version 0.3.0 yet.
   `Q̄_t = Q_1 . Q_2 . ... . Q_t`.
 - Categorical forward sampling preserves scalar or array shape and accepts
   matching explicit uniform variates in `[0, 1)`.
+- Categorical reverse sampling accepts scalar states, validates every
+  predicted clean-state probability vector, and supports current-stream,
+  locally seeded, or explicit uniform randomness.
 
 ## Module map
 
@@ -145,7 +154,7 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
-core/categorical.wl categorical kernels, schedules, forward sampling, and reverse primitives
+core/categorical.wl categorical kernels, schedules, and forward and reverse sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

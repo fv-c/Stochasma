@@ -20,7 +20,7 @@ branch.
 - [x] exact categorical posterior;
 - [x] predicted-`x0` reverse probabilities;
 - [x] categorical single reverse step;
-- [ ] categorical reverse sampler.
+- [x] categorical reverse sampler.
 
 ## 0.4
 

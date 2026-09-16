@@ -33,7 +33,9 @@ The unreleased development version `0.3.0` currently provides:
   uniform noise;
 - exact categorical posterior probabilities;
 - predicted-`x0` reverse probabilities and single-step categorical reverse
-  sampling.
+  sampling;
+- predictor-driven categorical reverse sampling with trajectories and
+  controlled randomness.
 
 ## Categorical diffusion
 
@@ -102,12 +104,29 @@ previousState = categoricalReverseStep[
   predictedX0,
   schedule
 ];
+
+categoricalPredictor = Function[{state, time},
+  {0.7, 0.2, 0.1}
+];
+
+x0Sample = categoricalSample[
+  categoricalPredictor,
+  2,
+  schedule,
+  "Seed" -> 1234
+];
 ```
 
 `predictedX0` is a model-predicted distribution over clean categories.
 Stochasma combines it with `Q̄_(t-1)` and `Q_t`, then normalizes the resulting
 joint-marginalized reverse weights once at the end. It is not a mixture of
 individually normalized exact posteriors.
+
+`categoricalSample` calls `predictor[xt, t]` from `T` down to `1`. It accepts
+automatic randomness, a locally isolated integer seed, or a length-`T`
+`"UniformNoises"` list indexed by logical time. With
+`"ReturnTrajectory" -> True`, it returns `{xT, ..., x0}` alongside the final
+sample.
 
 ## Time embeddings
 
