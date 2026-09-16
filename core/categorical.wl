@@ -15,6 +15,9 @@ categoricalForwardDiffuse::usage =
 categoricalForwardDiffuseAt::usage =
   "categoricalForwardDiffuseAt[x0, t, schedule] samples q(x_t | x_0) at logical time t by applying the cumulative row-vector transition Qbar_t stored in a categorical schedule. categoricalForwardDiffuseAt[x0, t, schedule, uniformNoise] uses explicit uniform variates deterministically. At t = 0 both forms return x0 exactly without generating noise; the explicit form still validates its noise.";
 
+categoricalPosterior::usage =
+  "categoricalPosterior[x0, xt, t, schedule] returns the exact probability vector q(x_(t-1) | x_t, x_0) for scalar categorical states at logical time t.";
+
 Begin["`Private`"]
 
 categoricalFiniteRealNumberQ[value_] := Quiet[Check[
@@ -363,6 +366,75 @@ categoricalForwardDiffuseAt[___] := (
   $Failed
 );
 
+categoricalPosterior::args =
+  "categoricalPosterior expects Integer scalar states x0 and xt, an Integer time, and a categorical schedule.";
+categoricalPosterior::schedule =
+  "The supplied categorical schedule is malformed or internally inconsistent.";
+categoricalPosterior::time =
+  "Time t must be an Integer in the inclusive range 1 through `1`.";
+categoricalPosterior::x0 =
+  "State x0 must be an Integer between 1 and the categorical schedule's category count.";
+categoricalPosterior::xt =
+  "State xt must be an Integer between 1 and the categorical schedule's category count.";
+categoricalPosterior::normalization =
+  "The categorical posterior has zero or non-finite normalization for the supplied states and time.";
+
+categoricalPosterior[
+  x0_,
+  xt_,
+  t_Integer,
+  schedule_Association
+] := Module[
+  {
+    categoryCount, priorPrevious, likelihood, unnormalized,
+    normalization, posterior
+  },
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalPosterior::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[categoricalPosterior::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  categoryCount = schedule["CategoryCount"];
+  If[!IntegerQ[x0] || !TrueQ[1 <= x0 <= categoryCount],
+    Message[categoricalPosterior::x0];
+    Return[$Failed]
+  ];
+  If[!IntegerQ[xt] || !TrueQ[1 <= xt <= categoryCount],
+    Message[categoricalPosterior::xt];
+    Return[$Failed]
+  ];
+  priorPrevious = If[
+    t == 1,
+    N[IdentityMatrix[categoryCount]][[x0]],
+    schedule["CumulativeTransitionKernels"][[t - 1, x0]]
+  ];
+  likelihood = schedule["TransitionKernels"][[t, All, xt]];
+  unnormalized = N[priorPrevious likelihood];
+  normalization = Total[unnormalized];
+  If[
+    !categoricalFiniteRealNumberQ[normalization] ||
+      !TrueQ[normalization > 0],
+    Message[categoricalPosterior::normalization];
+    Return[$Failed]
+  ];
+  posterior = N[unnormalized/normalization];
+  If[
+    !VectorQ[posterior, categoricalFiniteRealNumberQ] ||
+      !AllTrue[posterior, TrueQ[# >= 0] &],
+    Message[categoricalPosterior::normalization];
+    Return[$Failed]
+  ];
+  posterior
+];
+
+categoricalPosterior[___] := (
+  Message[categoricalPosterior::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runCategoricalTests[] := Module[
@@ -371,7 +443,8 @@ runCategoricalTests[] := Module[
     randomSample, expectedNoise, q1, q2, q3, schedule, uniformBetas,
     uniformSchedule, x0, noise, t, samples, expectedNext, actualNext,
     replay1, replay2, withinToleranceKernel, overToleranceKernel,
-    toleranceSamples
+    toleranceSamples, posteriorQ1, posteriorQ2, posteriorQ3,
+    posteriorSchedule, posterior, manualUnnormalized, manualPosterior
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -508,6 +581,81 @@ runCategoricalTests[] := Module[
       Quiet[makeUniformCategoricalSchedule[3, {Infinity}]] === $Failed &&
       Quiet[makeUniformCategoricalSchedule[3, {Indeterminate}]] === $Failed &&
       Quiet[makeUniformCategoricalSchedule[3, 0.2]] === $Failed
+  ];
+
+  posteriorQ1 = {
+    {0.7, 0.2, 0.1},
+    {0.1, 0.6, 0.3},
+    {0.2, 0.1, 0.7}
+  };
+  posteriorQ2 = {
+    {0.5, 0.4, 0.1},
+    {0.2, 0.7, 0.1},
+    {0.3, 0.2, 0.5}
+  };
+  posteriorQ3 = {
+    {0.6, 0.1, 0.3},
+    {0.25, 0.5, 0.25},
+    {0.15, 0.35, 0.5}
+  };
+  posteriorSchedule = makeCategoricalSchedule[
+    {posteriorQ1, posteriorQ2, posteriorQ3}
+  ];
+  posterior = categoricalPosterior[2, 3, 3, posteriorSchedule];
+  manualUnnormalized =
+    (posteriorQ1 . posteriorQ2)[[2]] posteriorQ3[[All, 3]];
+  manualPosterior = manualUnnormalized/Total[manualUnnormalized];
+  assert[
+    "uses the ordered non-commutative cumulative kernel in the posterior",
+    !categoricalNumericArraysCloseQ[
+      posteriorQ1 . posteriorQ2,
+      posteriorQ2 . posteriorQ1
+    ] &&
+      categoricalNumericArraysCloseQ[posterior, manualPosterior]
+  ];
+  assert[
+    "returns a normalized non-negative posterior of category length",
+    Length[posterior] === 3 &&
+      Min[posterior] >= 0 &&
+      Abs[Total[posterior] - 1.] < 10^-14
+  ];
+  assert[
+    "reduces the t = 1 posterior to the clean-state point mass",
+    categoricalPosterior[2, 3, 1, posteriorSchedule] === {0., 1., 0.}
+  ];
+  assert[
+    "rejects malformed posterior schedules",
+    Quiet[categoricalPosterior[
+      1,
+      1,
+      1,
+      KeyDrop[posteriorSchedule, "CumulativeTransitionKernels"]
+    ]] === $Failed &&
+      Quiet[categoricalPosterior[1, 1, 1, {posteriorQ1}]] === $Failed
+  ];
+  assert[
+    "rejects invalid posterior times",
+    Quiet[categoricalPosterior[1, 1, 0, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[1, 1, 4, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[1, 1, 1.5, posteriorSchedule]] === $Failed
+  ];
+  assert[
+    "rejects non-Integer and out-of-range posterior states",
+    Quiet[categoricalPosterior[1.0, 1, 1, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[1, 1.0, 1, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[0, 1, 1, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[4, 1, 1, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[1, 0, 1, posteriorSchedule]] === $Failed &&
+      Quiet[categoricalPosterior[1, 4, 1, posteriorSchedule]] === $Failed
+  ];
+  assert[
+    "rejects a posterior with zero normalization",
+    Quiet[categoricalPosterior[
+      1,
+      2,
+      1,
+      makeCategoricalSchedule[{IdentityMatrix[3]}]
+    ]] === $Failed
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
