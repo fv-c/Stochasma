@@ -1,7 +1,7 @@
 BeginPackage["Stochasma`"]
 
 sinusoidalTimeEmbedding::usage =
-  "sinusoidalTimeEmbedding[time, dimensions, opts] returns a deterministic sinusoidal embedding of a finite non-negative diffusion time. dimensions must be a positive Integer. The option \"MaxPeriod\" (default 10000.) controls the lowest generated frequency; odd dimensions are padded with one trailing zero.";
+  "sinusoidalTimeEmbedding[time, dimensions, opts] returns a deterministic sinusoidal embedding of a finite non-negative diffusion time. dimensions must be an Integer greater than or equal to 2. The option \"MaxPeriod\" (default 10000.) controls the lowest generated frequency; odd dimensions are padded with one trailing zero.";
 
 Begin["`Private`"]
 
@@ -17,7 +17,7 @@ Options[sinusoidalTimeEmbedding] = {
 };
 
 sinusoidalTimeEmbedding::args =
-  "sinusoidalTimeEmbedding expects a finite non-negative real time, a positive Integer dimension count, and valid options.";
+  "sinusoidalTimeEmbedding expects a finite non-negative real time, an Integer dimension count greater than or equal to 2, and valid options.";
 sinusoidalTimeEmbedding::maxperiod =
   "The \"MaxPeriod\" option must be a finite real number greater than or equal to 1.";
 
@@ -27,7 +27,7 @@ sinusoidalTimeEmbedding[time_, dimensions_, opts___] := Module[
   given = {opts};
   If[
     !finiteRealTimeQ[time] || !TrueQ[time >= 0] ||
-      !IntegerQ[dimensions] || dimensions <= 0 || !OptionQ[given],
+      !IntegerQ[dimensions] || dimensions < 2 || !OptionQ[given],
     Message[sinusoidalTimeEmbedding::args];
     Return[$Failed]
   ];
@@ -49,12 +49,8 @@ sinusoidalTimeEmbedding[time_, dimensions_, opts___] := Module[
     Return[$Failed]
   ];
   halfDimensions = Quotient[dimensions, 2];
-  frequencies = If[
-    halfDimensions == 0,
-    {},
-    Exp[
-      -Log[N[maxPeriod]] Range[0, halfDimensions - 1]/halfDimensions
-    ]
+  frequencies = Exp[
+    -Log[N[maxPeriod]] Range[0, halfDimensions - 1]/halfDimensions
   ];
   angles = N[time] frequencies;
   embedding = Join[Cos[angles], Sin[angles]];
@@ -64,26 +60,50 @@ sinusoidalTimeEmbedding[time_, dimensions_, opts___] := Module[
 (* === TESTS === *)
 
 runEmbeddingsTests[] := Module[
-  {passed = 0, assert, embedding, customEmbedding, before, after},
+  {
+    passed = 0, assert, embeddingAtZero2, embeddingAtZero6,
+    embeddingAtThree6, oddEmbedding, customEmbedding, before, after
+  },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ embeddings/sinusoidalTimeEmbedding: ", label];
     Quit[1]
   ];
 
-  embedding = sinusoidalTimeEmbedding[3, 6];
+  embeddingAtZero2 = sinusoidalTimeEmbedding[0, 2];
   assert[
-    "returns the requested finite real dimensions",
-    Dimensions[embedding] === {6} &&
-      AllTrue[embedding, finiteRealTimeQ]
+    "two-dimensional time-zero embedding has the requested finite values",
+    embeddingAtZero2 === {1., 0.} &&
+      AllTrue[embeddingAtZero2, finiteRealTimeQ]
+  ];
+  embeddingAtZero6 = sinusoidalTimeEmbedding[0, 6];
+  assert[
+    "six-dimensional time-zero embedding has the requested dimensions",
+    Dimensions[embeddingAtZero6] === {6} &&
+      AllTrue[embeddingAtZero6, finiteRealTimeQ]
+  ];
+  embeddingAtThree6 = sinusoidalTimeEmbedding[3, 6];
+  assert[
+    "nonzero-time embedding has the requested finite dimensions",
+    Dimensions[embeddingAtThree6] === {6} &&
+      AllTrue[embeddingAtThree6, finiteRealTimeQ]
   ];
   assert[
-    "time zero has cosine components equal to one and sine components zero",
-    sinusoidalTimeEmbedding[0, 6] === {1., 1., 1., 0., 0., 0.}
+    "evaluation is deterministic",
+    embeddingAtThree6 === sinusoidalTimeEmbedding[3, 6]
   ];
   assert[
     "each sine-cosine frequency pair has unit squared norm",
-    Max[Abs[Take[embedding, 3]^2 + Take[embedding, -3]^2 - 1]] < 10^-12
+    Max[
+      Abs[
+        Take[embeddingAtThree6, 3]^2 +
+          Take[embeddingAtThree6, -3]^2 - 1
+      ]
+    ] < 10^-12
+  ];
+  assert[
+    "time zero has cosine components equal to one and sine components zero",
+    embeddingAtZero6 === {1., 1., 1., 0., 0., 0.}
   ];
   customEmbedding = sinusoidalTimeEmbedding[
     2,
@@ -98,10 +118,11 @@ runEmbeddingsTests[] := Module[
       ]
     ] < 10^-12
   ];
+  oddEmbedding = sinusoidalTimeEmbedding[2, 5];
   assert[
     "odd dimensions receive one trailing zero",
-    sinusoidalTimeEmbedding[2, 5] ===
-      Append[sinusoidalTimeEmbedding[2, 4], 0.]
+    Dimensions[oddEmbedding] === {5} &&
+      oddEmbedding === Append[sinusoidalTimeEmbedding[2, 4], 0.]
   ];
   BlockRandom[
     SeedRandom[314159];
@@ -117,26 +138,51 @@ runEmbeddingsTests[] := Module[
     ]
   ];
   assert[
-    "invalid times, dimensions, and options fail",
-    Quiet[sinusoidalTimeEmbedding[-1, 4]] === $Failed &&
-      Quiet[sinusoidalTimeEmbedding[Infinity, 4]] === $Failed &&
-      Quiet[sinusoidalTimeEmbedding[symbolicTime, 4]] === $Failed &&
-      Quiet[sinusoidalTimeEmbedding[1, 0]] === $Failed &&
-      Quiet[sinusoidalTimeEmbedding[1, 4.]] === $Failed &&
-      Quiet[
-        sinusoidalTimeEmbedding[1, 4, "MaxPeriod" -> 0.5]
-      ] === $Failed &&
-      Quiet[
-        sinusoidalTimeEmbedding[1, 4, "Unknown" -> 1]
-      ] === $Failed &&
-      Quiet[
-        sinusoidalTimeEmbedding[
-          1,
-          4,
-          "MaxPeriod" -> 100.,
-          "MaxPeriod" -> 1000.
-        ]
-      ] === $Failed
+    "one dimension fails",
+    Quiet[sinusoidalTimeEmbedding[1, 1]] === $Failed
+  ];
+  assert[
+    "zero dimensions fail",
+    Quiet[sinusoidalTimeEmbedding[1, 0]] === $Failed
+  ];
+  assert[
+    "non-integer dimensions fail",
+    Quiet[sinusoidalTimeEmbedding[1, 4.]] === $Failed
+  ];
+  assert[
+    "negative time fails",
+    Quiet[sinusoidalTimeEmbedding[-1, 4]] === $Failed
+  ];
+  assert[
+    "non-finite time fails",
+    Quiet[sinusoidalTimeEmbedding[Infinity, 4]] === $Failed
+  ];
+  assert[
+    "symbolic time fails",
+    Quiet[sinusoidalTimeEmbedding[symbolicTime, 4]] === $Failed
+  ];
+  assert[
+    "maximum period below one fails",
+    Quiet[
+      sinusoidalTimeEmbedding[1, 4, "MaxPeriod" -> 0.5]
+    ] === $Failed
+  ];
+  assert[
+    "unknown options fail",
+    Quiet[
+      sinusoidalTimeEmbedding[1, 4, "Unknown" -> 1]
+    ] === $Failed
+  ];
+  assert[
+    "duplicate options fail",
+    Quiet[
+      sinusoidalTimeEmbedding[
+        1,
+        4,
+        "MaxPeriod" -> 100.,
+        "MaxPeriod" -> 1000.
+      ]
+    ] === $Failed
   ];
 
   Print["✓ embeddings — ", passed, " tests passed"];
