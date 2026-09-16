@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-09-16
 
 - Add deterministic sinusoidal time embeddings for external predictors.
 - Add a `NetChain` and `NetGraph` adapter for the predictor protocol.
 - Add batched epsilon-prediction training data with controlled randomness.
 - Add deterministic and controlled-stochastic DDIM sampling with full or
   subsampled reverse timesteps.
+- Verify DDIM and DDPM ancestral equivalence for consecutive timesteps at
+  `Eta -> 1` with corresponding explicit reverse noises.
 
 ## 0.1.0 — 2026-09-16
 
