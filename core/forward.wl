@@ -6,7 +6,7 @@ If[
 BeginPackage["Stochasma`"]
 
 forwardDiffuse::usage =
-  "forwardDiffuse[x0, t, schedule] samples q(x_t | x_0) for logical time t, while forwardDiffuse[x0, t, schedule, noise] uses explicit same-shape Gaussian noise deterministically. At t = 0 both forms return x0 exactly.";
+  "forwardDiffuse[x0, t, schedule] samples q(x_t | x_0) for logical time t using the current random stream, while forwardDiffuse[x0, t, schedule, noise] uses explicit same-shape Gaussian noise deterministically. At t = 0 both forms return x0 exactly without generating noise.";
 
 Begin["`Private`"]
 
@@ -51,7 +51,7 @@ forwardDiffuse[x0_, t_Integer, schedule_Association] := Module[{noise},
     Return[$Failed]
   ];
   If[t == 0, Return[x0]];
-  noise = BlockRandom[randomNormalLike[x0]];
+  noise = randomNormalLike[x0];
   forwardDiffuse[x0, t, schedule, noise]
 ];
 
@@ -88,7 +88,8 @@ forwardDiffuse[___] := (
 
 runForwardTests[] := Module[
   {passed = 0, assert, schedule, x0, noise, t, expected, samples,
-    baseline, withCall},
+    stochasticInput, firstDraw, secondDraw, replay1, replay2,
+    expectedNext, actualNext},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ forward/forwardDiffuse: ", label];
@@ -140,14 +141,51 @@ runForwardTests[] := Module[
         schedule["SqrtOneMinusAlphaBars"][[t]] noise
     ]
   ];
-  baseline = BlockRandom[SeedRandom[1234]; {RandomReal[], RandomReal[]}];
-  withCall = BlockRandom[
+  stochasticInput = ConstantArray[0., 64];
+  {firstDraw, secondDraw} = BlockRandom[
     SeedRandom[1234];
-    {RandomReal[], forwardDiffuse[x0, t, schedule]; RandomReal[]}
+    {
+      forwardDiffuse[stochasticInput, t, schedule],
+      forwardDiffuse[stochasticInput, t, schedule]
+    }
   ];
   assert[
-    "generated noise does not advance the caller random state",
-    baseline === withCall
+    "consecutive stochastic calls consume the current random stream",
+    firstDraw =!= secondDraw
+  ];
+  replay1 = BlockRandom[
+    SeedRandom[1234];
+    forwardDiffuse[stochasticInput, t, schedule]
+  ];
+  replay2 = BlockRandom[
+    SeedRandom[1234];
+    forwardDiffuse[stochasticInput, t, schedule]
+  ];
+  assert[
+    "resetting the current random stream reproduces generated noise",
+    replay1 === replay2
+  ];
+  expectedNext = BlockRandom[
+    SeedRandom[1234];
+    randomNormalLike[stochasticInput];
+    RandomReal[]
+  ];
+  actualNext = BlockRandom[
+    SeedRandom[1234];
+    forwardDiffuse[stochasticInput, t, schedule];
+    RandomReal[]
+  ];
+  assert[
+    "stochastic diffusion advances the stream by one same-shape draw",
+    actualNext === expectedNext
+  ];
+  assert[
+    "t = 0 does not consume the current random stream",
+    BlockRandom[
+      SeedRandom[1234];
+      forwardDiffuse[stochasticInput, 0, schedule];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[1234]; RandomReal[]]
   ];
   assert[
     "invalid time boundaries fail",
