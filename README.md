@@ -105,12 +105,12 @@ previousState = categoricalReverseStep[
   schedule
 ];
 
-categoricalPredictor = Function[{state, time},
-  {0.7, 0.2, 0.1}
+predictor = Function[{state, time},
+  {0.6, 0.3, 0.1}
 ];
 
-x0Sample = categoricalSample[
-  categoricalPredictor,
+x0 = categoricalSample[
+  predictor,
   2,
   schedule,
   "Seed" -> 1234
@@ -122,11 +122,20 @@ Stochasma combines it with `Q̄_(t-1)` and `Q_t`, then normalizes the resulting
 joint-marginalized reverse weights once at the end. It is not a mixture of
 individually normalized exact posteriors.
 
-`categoricalSample` calls `predictor[xt, t]` from `T` down to `1`. It accepts
-automatic randomness, a locally isolated integer seed, or a length-`T`
-`"UniformNoises"` list indexed by logical time. With
-`"ReturnTrajectory" -> True`, it returns `{xT, ..., x0}` alongside the final
-sample.
+`categoricalSample` interprets its explicit `initialState` as `x_T` and never
+generates a terminal prior internally: arbitrary transition kernels need not
+make `Q̄_T` uniform. It is scalar-only in 0.3: `initialState` must be an
+integer category label and `predictor[xt, t]` must return a length-`K`
+probability list for `p_theta(x0 | xt, t)`.
+
+The sampler calls `predictor[xt, t]` from `T` down to `1`. With
+`"Noises" -> Automatic`, it consumes one caller-stream uniform variate per
+reverse step. An integer `"Seed"` is reproducible and locally isolated. An
+explicit length-`T` `"Noises"` list is deterministic, is indexed by logical
+time (`Noises[[t]]` drives `t -> t - 1`), does not consume the random stream,
+and takes precedence over `"Seed"`. With `"ReturnTrajectory" -> True`, the
+result is `<|"Sample" -> x0, "Trajectory" -> {xT, ..., x0}, "Timesteps" ->
+{T, ..., 0}|>`.
 
 ## Time embeddings
 

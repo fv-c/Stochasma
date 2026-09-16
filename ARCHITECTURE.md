@@ -112,12 +112,29 @@ identity, so the predicted clean-state probabilities are still weighted by
 the current transition likelihood before normalization. `categoricalReverseStep`
 samples once from this joint-marginalized probability vector.
 
-The categorical sampler traverses `T, T-1, ..., 1`. At each logical time it
-calls `predictor[xt, t]` for a probability distribution over clean categories,
-then samples the next state through `categoricalReverseStep`. A returned
-trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit uniform variates use a
-length-`T` list indexed by logical time, and every entry is consumed because
-the categorical transition at `t = 1` remains stochastic in general.
+The scalar categorical reverse process is composed as follows:
+
+```text
+predictor[x_t, t]
+  -> p_theta(x_0 | x_t, t)
+categoricalReverseProbabilities
+  -> p_theta(x_(t-1) | x_t)
+categoricalReverseStep
+  -> one reverse transition
+categoricalSample
+  -> iterate T, T-1, ..., 1 from x_T to x_0
+```
+
+`categoricalSample` receives its initial scalar integer state explicitly from
+the caller and interprets it as `x_T`; it never constructs or assumes a
+terminal prior because arbitrary categorical kernels need not make `Qbar_T`
+uniform. In 0.3, both the state and every `predictor[xt, t]` invocation are
+scalar-only: the predictor returns one validated length-`K` distribution over
+clean categories. A returned trajectory aligns `"Trajectory" -> {xT,
+x(T-1), ..., x0}` with `"Timesteps" -> {T, T-1, ..., 0}`. Explicit uniform
+variates use a length-`T` `"Noises"` list indexed by logical time
+(`Noises[[t]]` drives `t -> t - 1`), and every entry is consumed because the
+categorical transition at `t = 1` remains stochastic in general.
 
 ## Invariants
 

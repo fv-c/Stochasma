@@ -13,8 +13,8 @@
 - Add exact categorical posterior probabilities.
 - Add categorical reverse-step sampling and canonical joint-marginalized
   predicted-`x0` reverse probabilities.
-- Add predictor-driven categorical reverse sampling with trajectories, isolated
-  seeds, and explicit logical-time-indexed uniform variates.
+- Add a full scalar categorical reverse sampler with seeded, automatic, and
+  explicit-noise randomness.
 
 ## 0.2.0 — 2026-09-16
 
