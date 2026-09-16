@@ -12,7 +12,7 @@ reverseMeanVariance::usage =
   "reverseMeanVariance[xt, t, predictedNoise, schedule] returns an Association with \"PredictedX0\", the deterministic DDPM posterior \"Mean\", and scalar posterior \"Variance\" for q(x_(t-1) | x_t, x0-hat).";
 
 reverseDiffuseStep::usage =
-  "reverseDiffuseStep[xt, t, predictedNoise, schedule] samples one DDPM step from t to t-1. The five-argument form uses explicit same-shape noise deterministically; at t = 1 no noise is added.";
+  "reverseDiffuseStep[xt, t, predictedNoise, schedule] samples one DDPM step from t to t-1 using the current random stream. The five-argument form uses explicit same-shape noise deterministically; at t = 1 no noise is generated or added.";
 
 Begin["`Private`"]
 
@@ -128,7 +128,7 @@ reverseDiffuseStep[
   posterior = reverseMeanVariance[xt, t, predictedNoise, schedule];
   If[posterior === $Failed, Return[$Failed]];
   If[t == 1, Return[posterior["Mean"]]];
-  noise = BlockRandom[randomNormalLike[xt]];
+  noise = randomNormalLike[xt];
   posterior["Mean"] + Sqrt[posterior["Variance"]] noise
 ];
 
@@ -159,7 +159,8 @@ reverseDiffuseStep[___] := (
 runReverseTests[] := Module[
   {passed = 0, assert, schedule, t, samples, noises, noisySamples,
     reconstructions, posterior, expectedMean, firstPosterior, explicitNoise,
-    reverseStep, baseline, withCall},
+    reverseStep, stochasticState, stochasticPrediction, firstDraw, secondDraw,
+    replay1, replay2, expectedNext, actualNext},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ reverse/predictCleanSample: ", label];
@@ -320,18 +321,56 @@ runReverseTests[] := Module[
       {noisySamples, noises}
     ]
   ];
-  baseline = BlockRandom[SeedRandom[5678]; {RandomReal[], RandomReal[]}];
-  withCall = BlockRandom[
+  stochasticState = ConstantArray[0., 64];
+  stochasticPrediction = ConstantArray[0., 64];
+  {firstDraw, secondDraw} = BlockRandom[
     SeedRandom[5678];
     {
-      RandomReal[],
-      reverseDiffuseStep[noisySamples[[2]], t, noises[[2]], schedule];
-      RandomReal[]
+      reverseDiffuseStep[
+        stochasticState, t, stochasticPrediction, schedule
+      ],
+      reverseDiffuseStep[
+        stochasticState, t, stochasticPrediction, schedule
+      ]
     }
   ];
   assert[
-    "generated reverse noise does not advance caller random state",
-    baseline === withCall
+    "consecutive stochastic reverse steps consume the current random stream",
+    firstDraw =!= secondDraw
+  ];
+  replay1 = BlockRandom[
+    SeedRandom[5678];
+    reverseDiffuseStep[stochasticState, t, stochasticPrediction, schedule]
+  ];
+  replay2 = BlockRandom[
+    SeedRandom[5678];
+    reverseDiffuseStep[stochasticState, t, stochasticPrediction, schedule]
+  ];
+  assert[
+    "resetting the current random stream reproduces reverse noise",
+    replay1 === replay2
+  ];
+  expectedNext = BlockRandom[
+    SeedRandom[5678];
+    randomNormalLike[stochasticState];
+    RandomReal[]
+  ];
+  actualNext = BlockRandom[
+    SeedRandom[5678];
+    reverseDiffuseStep[stochasticState, t, stochasticPrediction, schedule];
+    RandomReal[]
+  ];
+  assert[
+    "stochastic reverse step advances the stream by one same-shape draw",
+    actualNext === expectedNext
+  ];
+  assert[
+    "t = 1 does not consume the current random stream",
+    BlockRandom[
+      SeedRandom[5678];
+      reverseDiffuseStep[stochasticState, 1, stochasticPrediction, schedule];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[5678]; RandomReal[]]
   ];
   assert[
     "reverse step rejects invalid explicit-noise shape",
