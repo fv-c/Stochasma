@@ -9,6 +9,7 @@ With[
       "core/objectives.wl",
       "core/sampling.wl",
       "core/ddim.wl",
+      "core/categorical.wl",
       "models/embeddings.wl",
       "models/adapters.wl",
       "models/training.wl"

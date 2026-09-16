@@ -81,6 +81,7 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
+core/categorical.wl uniform categorical transition kernels
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

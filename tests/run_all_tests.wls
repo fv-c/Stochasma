@@ -10,6 +10,7 @@ counts = {
   Stochasma`Private`runObjectivesTests[],
   Stochasma`Private`runSamplingTests[],
   Stochasma`Private`runDDIMTests[],
+  Stochasma`Private`runCategoricalTests[],
   Stochasma`Private`runEmbeddingsTests[],
   Stochasma`Private`runAdaptersTests[],
   Stochasma`Private`runTrainingTests[]
