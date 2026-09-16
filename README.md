@@ -10,7 +10,8 @@ Python dependency.
 
 ## Status
 
-Version `0.1.0` provides:
+The unreleased development version `0.1.0`, intended for the first formal
+release, currently provides:
 
 - linear and cosine beta schedules;
 - canonical DDPM schedule coefficients;
@@ -66,6 +67,13 @@ Max[Abs[x0Recovered - x0]] < 10^-10
 (* True *)
 ```
 
+## Randomness
+
+- Automatic randomness consumes the current Wolfram random stream.
+- An explicit integer `"Seed"` is reproducible and locally isolated.
+- Explicit noise is fully deterministic and does not consult the random
+  stream.
+
 ## Predictor protocol and sampling
 
 A predictor is any callable with the contract `predictor[xt, t]`. It must
@@ -95,6 +103,11 @@ randomness; its `t = 1` entry is validated but not added.
 wolframscript -file tests/run_all_tests.wls
 wolframscript -file examples/gaussian_1d.wls
 ```
+
+The test suite requires a locally installed and activated Wolfram Engine with
+`wolframscript` on `PATH`. No GitHub-hosted workflow is included because that
+runtime is not reliably available there. A self-hosted runner can execute the
+same test command unchanged.
 
 The scientific example constructs a synthetic bimodal one-dimensional dataset,
 diffuses it at several times with one explicit noise realization, prints

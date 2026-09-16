@@ -44,10 +44,13 @@ the posterior variance is zero.
 - The Gaussian core accepts real-valued numeric scalars and arrays.
 - Input and output shape is preserved.
 - Functions are pure and inputs are never modified in place.
-- Randomness is isolated with `BlockRandom`.
+- Unseeded stochastic operations consume the caller's current random stream.
+- Explicit integer seeds are reproducible and locally isolated with
+  `BlockRandom`.
 - Deterministic mathematical functions never generate random values.
-- Every stochastic operation has a deterministic explicit-noise form.
-- No global mutable state is used.
+- Every stochastic primitive has a deterministic explicit-noise form where
+  applicable.
+- No package-owned mutable global state is used.
 - The core has no dependency on application domains.
 - The core has no dependency on `NetGraph`, `NetTrain`, or a model architecture.
 - Invalid parameters produce a message and `$Failed`; they are not silently
