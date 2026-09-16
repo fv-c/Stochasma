@@ -6,7 +6,7 @@ are loaded by `Needs["Stochasma`"]`.
 | Module | Public symbol | Signature | Description |
 |---|---|---|---|
 | `core/schedules.wl` | `linearBetaSchedule` | `linearBetaSchedule[steps_Integer, betaStart_, betaEnd_]` | Construct a finite linear beta schedule. |
-| `core/schedules.wl` | `cosineBetaSchedule` | `cosineBetaSchedule[steps_Integer, opts___]` | Construct a cosine beta schedule with configurable offset and generated-beta cap. |
+| `core/schedules.wl` | `cosineBetaSchedule` | `cosineBetaSchedule[steps_, opts___]` | Construct a cosine beta schedule with configurable offset and generated-beta cap. |
 | `core/schedules.wl` | `makeDiffusionSchedule` | `makeDiffusionSchedule[betas_List]` | Validate betas and derive all canonical DDPM coefficient arrays. |
 | `core/forward.wl` | `forwardDiffuse` | `forwardDiffuse[x0_, t_Integer, schedule_Association]` | Sample the closed-form forward process from the current random stream. |
 | `core/forward.wl` | `forwardDiffuse` | `forwardDiffuse[x0_, t_Integer, schedule_Association, noise_]` | Evaluate the forward process with explicit noise. |
@@ -30,7 +30,7 @@ are loaded by `Needs["Stochasma`"]`.
 | `core/categorical.wl` | `categoricalReverseProbabilities` | `categoricalReverseProbabilities[xt_, t_Integer, predictedX0Probabilities_List, schedule_Association]` | Construct predicted-`x0` categorical reverse probabilities using the one-step and cumulative transition kernels. |
 | `core/categorical.wl` | `categoricalReverseStep` | `categoricalReverseStep[xt_, t_Integer, predictedX0Probabilities_List, schedule_Association]` | Sample one categorical reverse step from the current random stream. |
 | `core/categorical.wl` | `categoricalReverseStep` | `categoricalReverseStep[xt_, t_Integer, predictedX0Probabilities_List, schedule_Association, uniformNoise_]` | Sample one categorical reverse step with an explicit uniform variate. |
-| `core/categorical.wl` | `categoricalSample` | `categoricalSample[predictor_, initialState_Integer, schedule_Association, opts___]` | Run the full scalar categorical reverse process from caller-supplied `x_T` to `x_0`. |
-| `models/embeddings.wl` | `sinusoidalTimeEmbedding` | `sinusoidalTimeEmbedding[time_, dimensions_Integer, opts___]` | Construct at least two deterministic sinusoidal features for a non-negative diffusion time. |
+| `core/categorical.wl` | `categoricalSample` | `categoricalSample[predictor_, initialState_, schedule_Association, opts___]` | Run the full scalar categorical reverse process; `initialState` must be an Integer scalar categorical state and is interpreted as caller-supplied `x_T`. |
+| `models/embeddings.wl` | `sinusoidalTimeEmbedding` | `sinusoidalTimeEmbedding[time_, dimensions_, opts___]` | Construct at least two deterministic sinusoidal features for a non-negative diffusion time. |
 | `models/adapters.wl` | `makeWolframNetPredictor` | `makeWolframNetPredictor[network_, inputAdapter_: Automatic]` | Return a callable `predictor[xt, t]` bridge; the network produces epsilon predictions and `ddpmSample` validates their shape and finiteness. |
 | `models/training.wl` | `makeDiffusionTrainingBatch` | `makeDiffusionTrainingBatch[cleanSamples_List, schedule_Association, opts___]` | Create a batch of epsilon-prediction training associations with automatic, seeded, or explicit times and noises. |

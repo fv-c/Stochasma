@@ -3,7 +3,9 @@
 Stochasma is a general-purpose Wolfram Language paclet for diffusion-model
 primitives. Version 0.1 implements Gaussian diffusion / DDPM while keeping
 neural-network models and application adapters external. Version 0.2 adds
-model-facing utilities without coupling the core to a network architecture.
+model-facing utilities and DDIM without coupling the core to a network
+architecture. Version 0.3 adds scalar categorical diffusion and reverse
+sampling.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no image, music, or other application-domain assumptions and has no
@@ -11,7 +13,7 @@ Python dependency.
 
 ## Status
 
-The unreleased development version `0.3.0` currently provides:
+Version `0.3.0` provides:
 
 - linear and cosine beta schedules;
 - canonical DDPM schedule coefficients;

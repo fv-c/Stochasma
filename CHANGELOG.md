@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.0 — 2026-09-16
 
 - Add a uniform categorical transition kernel.
 - Add categorical transition sampling through arbitrary row-stochastic
