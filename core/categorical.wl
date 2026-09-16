@@ -370,7 +370,8 @@ runCategoricalTests[] := Module[
     passed = 0, assert, kernel, expected, permutation, states,
     randomSample, expectedNoise, q1, q2, q3, schedule, uniformBetas,
     uniformSchedule, x0, noise, t, samples, expectedNext, actualNext,
-    replay1, replay2
+    replay1, replay2, withinToleranceKernel, overToleranceKernel,
+    toleranceSamples
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -510,6 +511,35 @@ runCategoricalTests[] := Module[
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
+  withinToleranceKernel = {
+    {0.5, 0.5 - 10^-12},
+    {0.25, 0.75}
+  };
+  overToleranceKernel = {
+    {0.5, 0.5 - 2.*10^-12},
+    {0.25, 0.75}
+  };
+  assert[
+    "accepts row-stochastic errors within the numerical tolerance",
+    Max[Abs[Total[withinToleranceKernel, {2}] - 1.]] <= 10^-12 &&
+      categoricalTransitionKernelCategoryCount[withinToleranceKernel] === 2
+  ];
+  assert[
+    "rejects row-stochastic errors beyond the numerical tolerance",
+    Max[Abs[Total[overToleranceKernel, {2}] - 1.]] > 10^-12 &&
+      categoricalTransitionKernelCategoryCount[overToleranceKernel] ===
+        $Failed
+  ];
+  toleranceSamples = categoricalForwardDiffuse[
+    {1, 1, 1},
+    withinToleranceKernel,
+    {0., 0.5, 1. - 10^-13}
+  ];
+  assert[
+    "samples a tolerance-limit kernel with a stable last-category fallback",
+    toleranceSamples === {1, 2, 2} &&
+      AllTrue[toleranceSamples, IntegerQ[#] && 1 <= # <= 2 &]
+  ];
   assert[
     "samples the transition row selected by each state",
     categoricalForwardDiffuse[{1, 2, 3}, kernel, {0.59, 0.19, 0.41}] ===
