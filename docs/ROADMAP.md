@@ -7,7 +7,7 @@ branch.
 ## 0.2
 
 - [x] sinusoidal time embeddings;
-- [ ] Wolfram neural-network adapters;
+- [x] Wolfram neural-network adapters;
 - [ ] training helpers;
 - [ ] DDIM sampling.
 

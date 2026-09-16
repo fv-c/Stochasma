@@ -33,8 +33,9 @@ length-`T` list indexed by logical time; the `t = 1` entry is not added because
 the posterior variance is zero.
 
 Model-facing utilities are independent of the deterministic DDPM core. A
-sinusoidal time embedding can be passed to an external predictor, but the core
-does not prescribe how that predictor consumes it.
+sinusoidal time embedding can be passed to an external predictor. Wolfram
+neural-network adapters translate `predictor[xt, t]` calls into network inputs,
+but the core does not prescribe a network architecture or input layout.
 
 ## Time convention
 
@@ -70,4 +71,5 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 models/embeddings.wl deterministic sinusoidal logical-time features
+models/adapters.wl  Wolfram neural-network predictor bridge
 ```

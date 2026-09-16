@@ -21,7 +21,8 @@ The unreleased development version `0.2.0` currently provides:
 - stochastic and explicit-noise reverse steps;
 - framework-independent training samples and epsilon loss;
 - predictor-driven DDPM sampling with seeded or explicit randomness;
-- deterministic sinusoidal time embeddings.
+- deterministic sinusoidal time embeddings;
+- Wolfram `NetChain` and `NetGraph` predictor adapters.
 
 ## Time embeddings
 
@@ -39,6 +40,31 @@ customFeatures = sinusoidalTimeEmbedding[
   500,
   128,
   "MaxPeriod" -> 1000.
+];
+```
+
+## Wolfram neural-network adapter
+
+`makeWolframNetPredictor` turns a `NetGraph` with `"Sample"` and `"Time"`
+inputs into the callable protocol used by `ddpmSample`:
+
+```wl
+predictor = makeWolframNetPredictor[epsilonNetwork];
+predictedNoise = predictor[xt, 500];
+```
+
+Pass an explicit input adapter for different port names, sinusoidal features,
+or a single-input `NetChain`:
+
+```wl
+predictor = makeWolframNetPredictor[
+  epsilonNetwork,
+  Function[{sample, time},
+    <|
+      "State" -> sample,
+      "TimeEmbedding" -> sinusoidalTimeEmbedding[time, 128]
+    |>
+  ]
 ];
 ```
 

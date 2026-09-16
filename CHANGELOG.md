@@ -3,6 +3,7 @@
 ## 0.2.0 — Unreleased
 
 - Add deterministic sinusoidal time embeddings for external predictors.
+- Add a `NetChain` and `NetGraph` adapter for the predictor protocol.
 
 ## 0.1.0 — 2026-09-16
 
