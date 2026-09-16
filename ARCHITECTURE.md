@@ -26,6 +26,11 @@ Dependencies point downward only where mathematically required. The predictor
 is supplied externally through the callable protocol `predictor[xt, t]` and is
 not part of the deterministic DDPM core.
 
+The sampler traverses `T, T-1, ..., 1` and produces `x0`. When requested, its
+trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit reverse noises use a
+length-`T` list indexed by logical time; the `t = 1` entry is not added because
+the posterior variance is zero.
+
 ## Time convention
 
 - `t = 0` always denotes the clean sample `x0`.

@@ -1,12 +1,20 @@
 # Stochasma — Module Index
 
-Public `::usage` messages are the primary API documentation. This index records
-the public module boundaries and signatures implemented by the paclet.
+Public `::usage` messages are the primary API documentation. All public symbols
+are loaded by `Needs["Stochasma`"]`.
 
 | Module | Public symbol | Signature | Description |
 |---|---|---|---|
-| `core/schedules.wl` | — | — | Noise schedules and derived coefficients. |
-| `core/forward.wl` | — | — | Gaussian forward diffusion. |
-| `core/reverse.wl` | — | — | DDPM reconstruction and reverse process. |
-| `core/objectives.wl` | — | — | Training samples and losses. |
-| `core/sampling.wl` | — | — | Predictor-driven sampling. |
+| `core/schedules.wl` | `linearBetaSchedule` | `linearBetaSchedule[steps_Integer, betaStart_, betaEnd_]` | Construct a finite linear beta schedule. |
+| `core/schedules.wl` | `cosineBetaSchedule` | `cosineBetaSchedule[steps_Integer, opts___]` | Construct a cosine beta schedule with configurable offset and generated-beta cap. |
+| `core/schedules.wl` | `makeDiffusionSchedule` | `makeDiffusionSchedule[betas_List]` | Validate betas and derive all canonical DDPM coefficient arrays. |
+| `core/forward.wl` | `forwardDiffuse` | `forwardDiffuse[x0_, t_Integer, schedule_Association]` | Sample the closed-form forward process. |
+| `core/forward.wl` | `forwardDiffuse` | `forwardDiffuse[x0_, t_Integer, schedule_Association, noise_]` | Evaluate the forward process with explicit noise. |
+| `core/reverse.wl` | `predictCleanSample` | `predictCleanSample[xt_, t_Integer, predictedNoise_, schedule_Association]` | Reconstruct an estimate of `x0`. |
+| `core/reverse.wl` | `reverseMeanVariance` | `reverseMeanVariance[xt_, t_Integer, predictedNoise_, schedule_Association]` | Return predicted `x0` and posterior mean and variance. |
+| `core/reverse.wl` | `reverseDiffuseStep` | `reverseDiffuseStep[xt_, t_Integer, predictedNoise_, schedule_Association]` | Sample one reverse step. |
+| `core/reverse.wl` | `reverseDiffuseStep` | `reverseDiffuseStep[xt_, t_Integer, predictedNoise_, schedule_Association, noise_]` | Evaluate one reverse step with explicit noise. |
+| `core/objectives.wl` | `makeDiffusionTrainingSample` | `makeDiffusionTrainingSample[x0_, t_Integer, schedule_Association]` | Create a stochastic epsilon-prediction training example. |
+| `core/objectives.wl` | `makeDiffusionTrainingSample` | `makeDiffusionTrainingSample[x0_, t_Integer, schedule_Association, noise_]` | Create a deterministic explicit-noise training example. |
+| `core/objectives.wl` | `epsilonPredictionLoss` | `epsilonPredictionLoss[predicted_, target_]` | Compute elementwise mean squared epsilon error. |
+| `core/sampling.wl` | `ddpmSample` | `ddpmSample[predictor_, initialNoise_, schedule_Association, opts___]` | Run predictor-driven reverse sampling from `xT` to `x0`. |
