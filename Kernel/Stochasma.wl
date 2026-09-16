@@ -7,7 +7,8 @@ With[
       "core/forward.wl",
       "core/reverse.wl",
       "core/objectives.wl",
-      "core/sampling.wl"
+      "core/sampling.wl",
+      "models/embeddings.wl"
     }
   ]
 ]

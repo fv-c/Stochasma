@@ -2,7 +2,8 @@
 
 Stochasma is a general-purpose Wolfram Language paclet for diffusion-model
 primitives. Version 0.1 implements Gaussian diffusion / DDPM while keeping
-neural-network models and application adapters external.
+neural-network models and application adapters external. Version 0.2 adds
+model-facing utilities without coupling the core to a network architecture.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no image, music, or other application-domain assumptions and has no
@@ -10,8 +11,7 @@ Python dependency.
 
 ## Status
 
-The unreleased development version `0.1.0`, intended for the first formal
-release, currently provides:
+The unreleased development version `0.2.0` currently provides:
 
 - linear and cosine beta schedules;
 - canonical DDPM schedule coefficients;
@@ -20,7 +20,26 @@ release, currently provides:
 - posterior mean and variance calculation;
 - stochastic and explicit-noise reverse steps;
 - framework-independent training samples and epsilon loss;
-- predictor-driven DDPM sampling with seeded or explicit randomness.
+- predictor-driven DDPM sampling with seeded or explicit randomness;
+- deterministic sinusoidal time embeddings.
+
+## Time embeddings
+
+`sinusoidalTimeEmbedding` maps a non-negative scalar time to cosine and sine
+features without requiring a Wolfram neural-network object. The default
+maximum period is `10000.`; odd dimensions receive one trailing zero.
+
+```wl
+timeFeatures = sinusoidalTimeEmbedding[500, 128];
+Length[timeFeatures]
+(* 128 *)
+
+customFeatures = sinusoidalTimeEmbedding[
+  500,
+  128,
+  "MaxPeriod" -> 1000.
+];
+```
 
 ## Local installation and loading
 

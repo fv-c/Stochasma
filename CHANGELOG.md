@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 — Unreleased
+
+- Add deterministic sinusoidal time embeddings for external predictors.
+
 ## 0.1.0 — Unreleased
 
 - Add a modern Wolfram paclet entry point under the public `Stochasma`` context.

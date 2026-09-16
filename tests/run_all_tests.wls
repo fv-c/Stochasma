@@ -8,7 +8,8 @@ counts = {
   Stochasma`Private`runForwardTests[],
   Stochasma`Private`runReverseTests[],
   Stochasma`Private`runObjectivesTests[],
-  Stochasma`Private`runSamplingTests[]
+  Stochasma`Private`runSamplingTests[],
+  Stochasma`Private`runEmbeddingsTests[]
 };
 
 If[AllTrue[counts, IntegerQ],

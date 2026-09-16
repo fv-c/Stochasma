@@ -1,14 +1,15 @@
 # Stochasma Roadmap
 
-The roadmap records intended directions only. None of the items below belongs
-to the v0.1 implementation.
+The roadmap records v0.2 and later directions. None of the items below belongs
+to the v0.1 implementation. Checked items are present on the development
+branch.
 
 ## 0.2
 
-- time embeddings;
-- Wolfram neural-network adapters;
-- training helpers;
-- DDIM sampling.
+- [x] sinusoidal time embeddings;
+- [ ] Wolfram neural-network adapters;
+- [ ] training helpers;
+- [ ] DDIM sampling.
 
 ## 0.3
 

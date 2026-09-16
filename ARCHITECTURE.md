@@ -4,7 +4,8 @@
 
 Stochasma provides general-purpose diffusion-model primitives for the Wolfram
 Language. Version 0.1 implements Gaussian diffusion / DDPM without assumptions
-about images, music, or a particular neural-network architecture.
+about images, music, or a particular neural-network architecture. Version 0.2
+adds model-facing utilities while preserving that separation.
 
 ## Layers
 
@@ -30,6 +31,10 @@ The sampler traverses `T, T-1, ..., 1` and produces `x0`. When requested, its
 trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit reverse noises use a
 length-`T` list indexed by logical time; the `t = 1` entry is not added because
 the posterior variance is zero.
+
+Model-facing utilities are independent of the deterministic DDPM core. A
+sinusoidal time embedding can be passed to an external predictor, but the core
+does not prescribe how that predictor consumes it.
 
 ## Time convention
 
@@ -64,4 +69,5 @@ core/forward.wl     forward process q(x_t | x_0)
 core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
+models/embeddings.wl deterministic sinusoidal logical-time features
 ```
