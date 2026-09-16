@@ -6,6 +6,9 @@ uniformCategoricalTransitionKernel::usage =
 makeCategoricalSchedule::usage =
   "makeCategoricalSchedule[{Q1, Q2, ..., QT}] validates one-step row-stochastic categorical transition matrices Q_t from logical time t - 1 to t and returns them together with cumulative row-vector transition matrices Qbar_t = Q1 . Q2 . ... . Qt for logical times 1 through T.";
 
+makeUniformCategoricalSchedule::usage =
+  "makeUniformCategoricalSchedule[categoryCount, betas] constructs one uniform categorical transition kernel for each finite beta in the inclusive range 0 through 1 and returns the validated categorical schedule.";
+
 categoricalForwardDiffuse::usage =
   "categoricalForwardDiffuse[state, transitionKernel] samples a categorical state or array of states through a row-stochastic transition kernel. categoricalForwardDiffuse[state, transitionKernel, uniformNoise] uses explicit uniform variates in the half-open interval [0, 1) and is deterministic.";
 
@@ -172,6 +175,32 @@ makeCategoricalSchedule[___] := (
   $Failed
 );
 
+makeUniformCategoricalSchedule::args =
+  "makeUniformCategoricalSchedule expects an Integer category count of at least 2 and a non-empty list of finite real beta values.";
+makeUniformCategoricalSchedule::range =
+  "Every beta must satisfy 0 <= beta <= 1.";
+
+makeUniformCategoricalSchedule[categoryCount_, betas_List] := Module[{},
+  If[
+    !IntegerQ[categoryCount] || categoryCount < 2 || betas === {} ||
+      !AllTrue[betas, categoricalFiniteRealNumberQ],
+    Message[makeUniformCategoricalSchedule::args];
+    Return[$Failed]
+  ];
+  If[!AllTrue[betas, TrueQ[0 <= # <= 1] &],
+    Message[makeUniformCategoricalSchedule::range];
+    Return[$Failed]
+  ];
+  makeCategoricalSchedule[
+    uniformCategoricalTransitionKernel[categoryCount, #] & /@ betas
+  ]
+];
+
+makeUniformCategoricalSchedule[___] := (
+  Message[makeUniformCategoricalSchedule::args];
+  $Failed
+);
+
 categoricalStateQ[state_, categoryCount_] := If[
   IntegerQ[state],
   1 <= state <= categoryCount,
@@ -266,7 +295,8 @@ categoricalForwardDiffuse[___] := (
 runCategoricalTests[] := Module[
   {
     passed = 0, assert, kernel, expected, permutation, states,
-    randomSample, expectedNoise, q1, q2, q3, schedule
+    randomSample, expectedNoise, q1, q2, q3, schedule, uniformBetas,
+    uniformSchedule
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -370,6 +400,39 @@ runCategoricalTests[] := Module[
       Quiet[makeCategoricalSchedule[{{{1., 0.}, {0.2, 0.7}}}]] ===
         $Failed &&
       Quiet[makeCategoricalSchedule[IdentityMatrix[2]]] === $Failed
+  ];
+
+  uniformBetas = {0., 0.2, 0.5, 1.};
+  uniformSchedule = makeUniformCategoricalSchedule[3, uniformBetas];
+  assert[
+    "constructs uniform transition kernels from every beta",
+    uniformSchedule["Steps"] === Length[uniformBetas] &&
+      uniformSchedule["CategoryCount"] === 3 &&
+      And @@ MapThread[
+        categoricalNumericArraysCloseQ,
+        {
+          uniformSchedule["TransitionKernels"],
+          uniformCategoricalTransitionKernel[3, #] & /@ uniformBetas
+        }
+      ]
+  ];
+  assert[
+    "uniform schedule includes identity and uniform endpoints",
+    uniformSchedule["TransitionKernels"][[1]] ===
+      N[IdentityMatrix[3]] &&
+      uniformSchedule["TransitionKernels"][[-1]] ===
+        ConstantArray[1./3, {3, 3}]
+  ];
+  assert[
+    "rejects invalid uniform categorical schedule inputs",
+    Quiet[makeUniformCategoricalSchedule[1, {0.2}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3., {0.2}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, {}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, {-0.1}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, {1.1}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, {Infinity}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, {Indeterminate}]] === $Failed &&
+      Quiet[makeUniformCategoricalSchedule[3, 0.2]] === $Failed
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
