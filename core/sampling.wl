@@ -6,7 +6,7 @@ If[
 BeginPackage["Stochasma`"]
 
 ddpmSample::usage =
-  "ddpmSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] from t = T down to 1 and returns x0. \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xT, ..., x0}|>. \"Seed\" accepts Automatic or an Integer. \"Noises\" accepts Automatic or a length-T list indexed by logical t; each entry has the sample shape and the t = 1 entry is validated but not added.";
+  "ddpmSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] from t = T down to 1 and returns x0. \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xT, ..., x0}|>. With \"Noises\" -> Automatic, \"Seed\" -> Automatic uses the current random stream and an Integer seed is reproducible and locally isolated. An explicit length-T \"Noises\" list is deterministic and takes precedence over \"Seed\"; its t = 1 entry is validated but not added.";
 
 Begin["`Private`"]
 
@@ -120,25 +120,22 @@ ddpmSample[
     Message[ddpmSample::noises];
     Return[$Failed]
   ];
-  If[
+  Which[
     ListQ[noises],
-    runDDPMSampling[
-      predictor, initialNoise, schedule, returnTrajectory, noises
-    ],
-    If[
-      seed === Automatic,
-      BlockRandom[
-        runDDPMSampling[
-          predictor, initialNoise, schedule, returnTrajectory, Automatic
-        ]
+      runDDPMSampling[
+        predictor, initialNoise, schedule, returnTrajectory, noises
       ],
+    IntegerQ[seed],
       BlockRandom[
         SeedRandom[seed];
         runDDPMSampling[
           predictor, initialNoise, schedule, returnTrajectory, Automatic
         ]
+      ],
+    True,
+      runDDPMSampling[
+        predictor, initialNoise, schedule, returnTrajectory, Automatic
       ]
-    ]
   ]
 ];
 
@@ -151,7 +148,9 @@ ddpmSample[___] := (
 
 runSamplingTests[] := Module[
   {passed = 0, assert, schedule, initialNoise, predictor, stepNoises,
-    expected, sample, result, seeded1, seeded2, samples},
+    expected, sample, result, timeTrace, seeded1, seeded2, differentSeed,
+    stochasticInitial, automatic1, automatic2, replay1, replay2,
+    expectedNext, actualNext, samples},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ sampling/ddpmSample: ", label];
@@ -206,11 +205,122 @@ runSamplingTests[] := Module[
       Dimensions[#] === Dimensions[initialNoise] &
     ]
   ];
-  seeded1 = ddpmSample[predictor, initialNoise, schedule, "Seed" -> 13579];
-  seeded2 = ddpmSample[predictor, initialNoise, schedule, "Seed" -> 13579];
+  timeTrace = Reap[
+    ddpmSample[
+      Function[{xt, time}, Sow[time]; 0. xt],
+      initialNoise,
+      schedule,
+      "Noises" -> stepNoises
+    ]
+  ][[2, 1]];
+  assert[
+    "predictor is called in descending logical-time order",
+    timeTrace === Reverse[Range[schedule["Steps"]]]
+  ];
+  stochasticInitial = ConstantArray[0., 64];
+  {automatic1, automatic2} = BlockRandom[
+    SeedRandom[13579];
+    {
+      ddpmSample[
+        Function[{xt, time}, 0. xt],
+        stochasticInitial,
+        schedule,
+        "Seed" -> Automatic
+      ],
+      ddpmSample[
+        Function[{xt, time}, 0. xt],
+        stochasticInitial,
+        schedule,
+        "Seed" -> Automatic
+      ]
+    }
+  ];
+  assert[
+    "consecutive automatic samplers consume the current random stream",
+    automatic1 =!= automatic2
+  ];
+  replay1 = BlockRandom[
+    SeedRandom[13579];
+    ddpmSample[
+      Function[{xt, time}, 0. xt],
+      stochasticInitial,
+      schedule,
+      "Seed" -> Automatic
+    ]
+  ];
+  replay2 = BlockRandom[
+    SeedRandom[13579];
+    ddpmSample[
+      Function[{xt, time}, 0. xt],
+      stochasticInitial,
+      schedule,
+      "Seed" -> Automatic
+    ]
+  ];
+  assert[
+    "resetting the caller seed reproduces automatic sampling",
+    replay1 === replay2
+  ];
+  expectedNext = BlockRandom[
+    SeedRandom[13579];
+    Table[
+      randomNormalLike[stochasticInitial],
+      {schedule["Steps"] - 1}
+    ];
+    RandomReal[]
+  ];
+  actualNext = BlockRandom[
+    SeedRandom[13579];
+    ddpmSample[
+      Function[{xt, time}, 0. xt],
+      stochasticInitial,
+      schedule,
+      "Seed" -> Automatic
+    ];
+    RandomReal[]
+  ];
+  assert[
+    "automatic sampling advances the stream once for each noisy reverse step",
+    actualNext === expectedNext
+  ];
+  seeded1 = ddpmSample[
+    Function[{xt, time}, 0. xt],
+    stochasticInitial,
+    schedule,
+    "Seed" -> 13579
+  ];
+  seeded2 = ddpmSample[
+    Function[{xt, time}, 0. xt],
+    stochasticInitial,
+    schedule,
+    "Seed" -> 13579
+  ];
   assert[
     "identical seeds produce identical samples",
     seeded1 === seeded2
+  ];
+  assert[
+    "integer-seeded sampling is isolated from the caller random stream",
+    BlockRandom[
+      SeedRandom[86420];
+      ddpmSample[
+        Function[{xt, time}, 0. xt],
+        stochasticInitial,
+        schedule,
+        "Seed" -> 13579
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[86420]; RandomReal[]]
+  ];
+  differentSeed = ddpmSample[
+    Function[{xt, time}, 0. xt],
+    stochasticInitial,
+    schedule,
+    "Seed" -> 24680
+  ];
+  assert[
+    "different seeds produce different stochastic samples",
+    seeded1 =!= differentSeed
   ];
   assert[
     "explicit noises make the seed irrelevant",
@@ -219,8 +329,22 @@ runSamplingTests[] := Module[
       "Seed" -> 1, "Noises" -> stepNoises
     ] === ddpmSample[
       predictor, initialNoise, schedule,
-      "Seed" -> 2, "Noises" -> stepNoises
+      "Seed" -> 999, "Noises" -> stepNoises
     ]
+  ];
+  assert[
+    "explicit noises do not consult the current random stream",
+    BlockRandom[
+      SeedRandom[97531];
+      ddpmSample[
+        predictor,
+        initialNoise,
+        schedule,
+        "Seed" -> 1,
+        "Noises" -> stepNoises
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[97531]; RandomReal[]]
   ];
   samples = {
     1.5,
@@ -243,7 +367,7 @@ runSamplingTests[] := Module[
     ]
   ];
   assert[
-    "predictor output shape is enforced",
+    "predictor output shape and finiteness are enforced",
     Quiet[
       ddpmSample[
         Function[{xt, time}, {0.}],
@@ -251,7 +375,15 @@ runSamplingTests[] := Module[
         schedule,
         "Noises" -> stepNoises
       ]
-    ] === $Failed
+    ] === $Failed &&
+      Quiet[
+        ddpmSample[
+          Function[{xt, time}, {0., Infinity, 0.}],
+          initialNoise,
+          schedule,
+          "Noises" -> stepNoises
+        ]
+      ] === $Failed
   ];
   assert[
     "invalid explicit noise sequences fail",
@@ -265,7 +397,23 @@ runSamplingTests[] := Module[
           schedule,
           "Noises" -> ConstantArray[{0.}, schedule["Steps"]]
         ]
+      ] === $Failed &&
+      Quiet[
+        ddpmSample[
+          predictor,
+          initialNoise,
+          schedule,
+          "Noises" -> ReplacePart[
+            stepNoises,
+            2 -> {0., Indeterminate, 0.}
+          ]
+        ]
       ] === $Failed
+  ];
+  assert[
+    "non-numeric and non-finite initial samples fail",
+    Quiet[ddpmSample[predictor, symbolic, schedule]] === $Failed &&
+      Quiet[ddpmSample[predictor, {0., Infinity, 0.}, schedule]] === $Failed
   ];
   assert[
     "invalid options and malformed schedules fail",
@@ -273,7 +421,16 @@ runSamplingTests[] := Module[
       ddpmSample[predictor, initialNoise, schedule, "Seed" -> 1.5]
     ] === $Failed &&
       Quiet[
-        ddpmSample[predictor, initialNoise, schedule, "Unknown" -> True]
+      ddpmSample[predictor, initialNoise, schedule, "Unknown" -> True]
+    ] === $Failed &&
+      Quiet[
+        ddpmSample[
+          predictor,
+          initialNoise,
+          schedule,
+          "Seed" -> 1,
+          "Seed" -> 2
+        ]
       ] === $Failed &&
       Quiet[
         ddpmSample[
