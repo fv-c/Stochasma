@@ -1,5 +1,5 @@
 If[
-  !NameQ["Stochasma`makeDiffusionSchedule"],
+  DownValues[Stochasma`makeDiffusionSchedule] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "schedules.wl"}]]
 ];
 

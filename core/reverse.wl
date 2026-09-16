@@ -1,5 +1,5 @@
 If[
-  !NameQ["Stochasma`forwardDiffuse"],
+  DownValues[Stochasma`forwardDiffuse] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "forward.wl"}]]
 ];
 
