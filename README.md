@@ -13,6 +13,9 @@ Python dependency.
 
 ## Status
 
+The latest stable release is `0.3.0`. Development version `0.4.0` is
+unreleased, with no 0.4 features implemented yet.
+
 Version `0.3.0` provides:
 
 - linear and cosine beta schedules;
