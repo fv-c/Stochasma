@@ -8,6 +8,9 @@ BeginPackage["Stochasma`"]
 predictCleanSample::usage =
   "predictCleanSample[xt, t, predictedNoise, schedule] reconstructs x0 from a noisy sample and a same-shape epsilon prediction. At t = 0 it returns xt exactly.";
 
+reverseMeanVariance::usage =
+  "reverseMeanVariance[xt, t, predictedNoise, schedule] returns an Association with \"PredictedX0\", the deterministic DDPM posterior \"Mean\", and scalar posterior \"Variance\" for q(x_(t-1) | x_t, x0-hat).";
+
 Begin["`Private`"]
 
 numericSamplesCloseQ[left_, right_, tolerance_ : 10^-10] := Quiet[Check[
@@ -60,11 +63,59 @@ predictCleanSample[___] := (
   $Failed
 );
 
+reverseMeanVariance::sample =
+  "xt must be a finite real numeric scalar or non-empty array.";
+reverseMeanVariance::schedule =
+  "The supplied diffusion schedule is malformed or internally inconsistent.";
+reverseMeanVariance::time =
+  "Time t must be an Integer in the inclusive range 1 through `1`.";
+reverseMeanVariance::noise =
+  "predictedNoise must be finite, real-valued, and have the same shape as xt.";
+reverseMeanVariance::args =
+  "reverseMeanVariance expects xt, an Integer time, predictedNoise, and a diffusion schedule.";
+
+reverseMeanVariance[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association
+] := Module[{predictedX0, coefficient1, coefficient2},
+  If[!realNumericSampleQ[xt],
+    Message[reverseMeanVariance::sample];
+    Return[$Failed]
+  ];
+  If[!diffusionScheduleQ[schedule],
+    Message[reverseMeanVariance::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[reverseMeanVariance::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[!sameSampleShapeQ[xt, predictedNoise],
+    Message[reverseMeanVariance::noise];
+    Return[$Failed]
+  ];
+  predictedX0 = predictCleanSample[xt, t, predictedNoise, schedule];
+  coefficient1 = schedule["PosteriorMeanCoefficient1"][[t]];
+  coefficient2 = schedule["PosteriorMeanCoefficient2"][[t]];
+  <|
+    "PredictedX0" -> predictedX0,
+    "Mean" -> coefficient1 predictedX0 + coefficient2 xt,
+    "Variance" -> schedule["PosteriorVariances"][[t]]
+  |>
+];
+
+reverseMeanVariance[___] := (
+  Message[reverseMeanVariance::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runReverseTests[] := Module[
   {passed = 0, assert, schedule, t, samples, noises, noisySamples,
-    reconstructions},
+    reconstructions, posterior, expectedMean, firstPosterior},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ reverse/predictCleanSample: ", label];
@@ -126,6 +177,60 @@ runReverseTests[] := Module[
         ReplacePart[schedule, "Steps" -> 7]
       ]
     ] === $Failed
+  ];
+
+  posterior = reverseMeanVariance[
+    noisySamples[[2]],
+    t,
+    noises[[2]],
+    schedule
+  ];
+  expectedMean =
+    schedule["PosteriorMeanCoefficient1"][[t]] samples[[2]] +
+      schedule["PosteriorMeanCoefficient2"][[t]] noisySamples[[2]];
+  assert[
+    "posterior result exposes the documented fields",
+    Keys[posterior] === {"PredictedX0", "Mean", "Variance"}
+  ];
+  assert[
+    "posterior uses reconstructed x0",
+    numericSamplesCloseQ[posterior["PredictedX0"], samples[[2]]]
+  ];
+  assert[
+    "posterior mean matches the direct coefficient formula",
+    numericSamplesCloseQ[posterior["Mean"], expectedMean]
+  ];
+  assert[
+    "posterior variance matches the schedule coefficient",
+    posterior["Variance"] === schedule["PosteriorVariances"][[t]]
+  ];
+  firstPosterior = reverseMeanVariance[
+    forwardDiffuse[samples[[2]], 1, schedule, noises[[2]]],
+    1,
+    noises[[2]],
+    schedule
+  ];
+  assert[
+    "t = 1 posterior is deterministic at predicted x0",
+    firstPosterior["Variance"] == 0. &&
+      numericSamplesCloseQ[firstPosterior["Mean"], samples[[2]]]
+  ];
+  assert[
+    "posterior preserves scalar vector matrix and tensor shapes",
+    And @@ MapThread[
+      Dimensions[reverseMeanVariance[#1, t, #2, schedule]["Mean"]] ===
+        Dimensions[#1] &,
+      {noisySamples, noises}
+    ]
+  ];
+  assert[
+    "posterior rejects times outside 1 through T",
+    Quiet[
+      reverseMeanVariance[samples[[2]], 0, noises[[2]], schedule]
+    ] === $Failed &&
+      Quiet[
+        reverseMeanVariance[samples[[2]], 9, noises[[2]], schedule]
+      ] === $Failed
   ];
 
   Print["✓ reverse — ", passed, " tests passed"];
