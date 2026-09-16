@@ -131,7 +131,7 @@ runTrainingTests[] := Module[
   {
     passed = 0, assert, schedule, cleanSamples, times, noises, batch,
     seeded1, seeded2, differentSeed, automatic1, automatic2,
-    replay1, replay2
+    replay1, replay2, seed, expectedNext, actualNext
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -258,6 +258,25 @@ runTrainingTests[] := Module[
   assert[
     "resetting the current random stream reproduces an automatic batch",
     replay1 === replay2
+  ];
+  seed = 112233;
+  expectedNext = BlockRandom[
+    SeedRandom[seed];
+    RandomInteger[
+      {1, schedule["Steps"]},
+      Length[cleanSamples]
+    ];
+    Scan[randomNormalLike, cleanSamples];
+    RandomReal[]
+  ];
+  actualNext = BlockRandom[
+    SeedRandom[seed];
+    makeDiffusionTrainingBatch[cleanSamples, schedule];
+    RandomReal[]
+  ];
+  assert[
+    "fully automatic batches draw all times before same-shape noises",
+    actualNext === expectedNext
   ];
 
   assert[
