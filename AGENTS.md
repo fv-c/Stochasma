@@ -12,6 +12,8 @@ Never read files outside the current task scope.
 
 ## Implementation
 
+- Use `.agents/skills/implement-module/SKILL.md` for module implementation.
+- Use `.agents/skills/run-tests/SKILL.md` for test and debugging work.
 - Keep one logical module per `.wl` file.
 - Use `BeginPackage["Stochasma`"]` / `EndPackage[]`.
 - Define a `::usage` message before every public function.
