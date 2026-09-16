@@ -1,10 +1,133 @@
+If[
+  !NameQ["Stochasma`forwardDiffuse"],
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "forward.wl"}]]
+];
+
 BeginPackage["Stochasma`"]
+
+predictCleanSample::usage =
+  "predictCleanSample[xt, t, predictedNoise, schedule] reconstructs x0 from a noisy sample and a same-shape epsilon prediction. At t = 0 it returns xt exactly.";
 
 Begin["`Private`"]
 
+numericSamplesCloseQ[left_, right_, tolerance_ : 10^-10] := Quiet[Check[
+  sameSampleShapeQ[left, right] &&
+    Max[Abs[Flatten[{N[left - right]}]]] <= tolerance,
+  False
+]];
+
+predictCleanSample::sample =
+  "xt must be a finite real numeric scalar or non-empty array.";
+predictCleanSample::schedule =
+  "The supplied diffusion schedule is malformed or internally inconsistent.";
+predictCleanSample::time =
+  "Time t must be an Integer in the inclusive range 0 through `1`.";
+predictCleanSample::noise =
+  "predictedNoise must be finite, real-valued, and have the same shape as xt.";
+predictCleanSample::args =
+  "predictCleanSample expects xt, an Integer time, predictedNoise, and a diffusion schedule.";
+
+predictCleanSample[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association
+] := Module[{sqrtAlphaBar, sqrtOneMinusAlphaBar},
+  If[!realNumericSampleQ[xt],
+    Message[predictCleanSample::sample];
+    Return[$Failed]
+  ];
+  If[!diffusionScheduleQ[schedule],
+    Message[predictCleanSample::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[0 <= t <= schedule["Steps"]],
+    Message[predictCleanSample::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[!sameSampleShapeQ[xt, predictedNoise],
+    Message[predictCleanSample::noise];
+    Return[$Failed]
+  ];
+  If[t == 0, Return[xt]];
+  sqrtAlphaBar = schedule["SqrtAlphaBars"][[t]];
+  sqrtOneMinusAlphaBar = schedule["SqrtOneMinusAlphaBars"][[t]];
+  (xt - sqrtOneMinusAlphaBar predictedNoise)/sqrtAlphaBar
+];
+
+predictCleanSample[___] := (
+  Message[predictCleanSample::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
-runReverseTests[] := Module[{passed = 0},
+runReverseTests[] := Module[
+  {passed = 0, assert, schedule, t, samples, noises, noisySamples,
+    reconstructions},
+  assert[label_, expression_] := If[TrueQ[expression],
+    passed++,
+    Print["✗ reverse/predictCleanSample: ", label];
+    Quit[1]
+  ];
+
+  schedule = makeDiffusionSchedule[linearBetaSchedule[8, 0.01, 0.08]];
+  t = 5;
+  samples = {
+    1.5,
+    {1., 0., -1.},
+    {{1., 2.}, {3., 4.}},
+    ArrayReshape[N[Range[8]], {2, 2, 2}]
+  };
+  noises = {
+    -0.25,
+    {0.25, -0.5, 1.},
+    {{0.1, -0.2}, {0.3, -0.4}},
+    ArrayReshape[N[Range[-4, 3]]/10., {2, 2, 2}]
+  };
+  noisySamples = MapThread[forwardDiffuse[#1, t, schedule, #2] &, {samples, noises}];
+  reconstructions = MapThread[
+    predictCleanSample[#1, t, #2, schedule] &,
+    {noisySamples, noises}
+  ];
+  assert[
+    "reconstructs scalar vector matrix and tensor clean samples",
+    And @@ MapThread[numericSamplesCloseQ, {reconstructions, samples}]
+  ];
+  assert[
+    "reconstructed shapes match xt",
+    Map[Dimensions, reconstructions] === Map[Dimensions, noisySamples]
+  ];
+  assert[
+    "t = 0 returns xt exactly",
+    predictCleanSample[samples[[2]], 0, noises[[2]], schedule] === samples[[2]]
+  ];
+  assert[
+    "same inputs are deterministic",
+    predictCleanSample[noisySamples[[2]], t, noises[[2]], schedule] ===
+      predictCleanSample[noisySamples[[2]], t, noises[[2]], schedule]
+  ];
+  assert[
+    "invalid time boundaries fail",
+    Quiet[predictCleanSample[samples[[2]], -1, noises[[2]], schedule]] === $Failed &&
+      Quiet[predictCleanSample[samples[[2]], 9, noises[[2]], schedule]] === $Failed
+  ];
+  assert[
+    "invalid predicted-noise shape fails",
+    Quiet[predictCleanSample[samples[[2]], t, {0., 0.}, schedule]] === $Failed
+  ];
+  assert[
+    "malformed schedules fail",
+    Quiet[
+      predictCleanSample[
+        samples[[2]],
+        t,
+        noises[[2]],
+        ReplacePart[schedule, "Steps" -> 7]
+      ]
+    ] === $Failed
+  ];
+
   Print["✓ reverse — ", passed, " tests passed"];
   passed
 ];
