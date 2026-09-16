@@ -7,7 +7,8 @@ Language. Version 0.1 implements Gaussian diffusion / DDPM without assumptions
 about images, music, or a particular neural-network architecture. Version 0.2
 adds model-facing utilities and DDIM sampling while preserving that separation.
 Version 0.3 begins a discrete diffusion layer with uniform categorical
-transition kernels and shape-preserving forward sampling.
+transition kernels, explicit transition schedules, and shape-preserving
+time-indexed forward sampling.
 
 ## Layers
 
@@ -57,6 +58,31 @@ network architecture or input layout.
 - Access to a schedule array at mathematical time `t` therefore uses Wolfram
   list index `t`; `t = 0` is handled explicitly and never indexes an array.
 
+## Categorical forward process
+
+Categorical distributions use a row-vector representation. `Q_t` is the
+one-step categorical transition matrix from logical time `t - 1` to `t`.
+The cumulative transition from the clean state is
+
+```text
+Q̄_t = Q_1 . Q_2 . ... . Q_t
+```
+
+so the forward marginal is
+
+```text
+q(x_t | x_0) = Categorical[oneHot(x_0) . Q̄_t]
+```
+
+`categoricalForwardDiffuse` is the matrix-based primitive: it samples through
+any compatible row-stochastic matrix, whether that matrix is `Q_t`, `Q̄_t`,
+or another categorical transition. It does not resolve logical time.
+
+`categoricalForwardDiffuseAt` is the time-indexed process for
+`q(x_t | x_0)`: it resolves `t` through a categorical schedule and applies the
+stored cumulative matrix `Q̄_t`. As in the Gaussian core, `t = 0` is the
+clean state, while schedule arrays are indexed at logical times `1..T`.
+
 ## Invariants
 
 - The Gaussian core accepts real-valued numeric scalars and arrays.
@@ -75,6 +101,8 @@ network architecture or input layout.
   clipped into a valid range.
 - Categorical states are represented by integer labels `1..K`, and categorical
   transition kernels are finite, non-negative, square, and row-stochastic.
+- Categorical transition products follow the row-vector order
+  `Q̄_t = Q_1 . Q_2 . ... . Q_t`.
 - Categorical forward sampling preserves scalar or array shape and accepts
   matching explicit uniform variates in `[0, 1)`.
 
@@ -87,7 +115,7 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
-core/categorical.wl categorical transition kernels and forward sampling
+core/categorical.wl categorical transition kernels, schedules, and forward sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

@@ -27,18 +27,55 @@ The unreleased development version `0.3.0` currently provides:
 - deterministic or controlled-stochastic DDIM sampling over full or
   subsampled reverse timesteps;
 - a uniform categorical transition kernel;
-- shape-preserving categorical forward diffusion with automatic or explicit
+- categorical transition sampling through arbitrary row-stochastic matrices;
+- categorical transition schedules and cumulative kernels;
+- time-indexed categorical forward diffusion with automatic or explicit
   uniform noise.
 
 ## Categorical diffusion
 
-`categoricalForwardDiffuse` samples integer category labels `1..K` through any
-validated `K`-by-`K` row-stochastic transition kernel. The explicit-noise form
-is deterministic and preserves the shape of categorical arrays:
+Categorical distributions use row vectors. `Q_t` is the one-step transition
+from logical time `t - 1` to `t`, and the cumulative transition is
+`Q̄_t = Q_1 . Q_2 . ... . Q_t`. Therefore,
+`q(x_t | x_0) = Categorical[oneHot(x_0) . Q̄_t]`.
+
+`categoricalForwardDiffuse` samples through an arbitrary transition matrix;
+`categoricalForwardDiffuseAt` resolves logical time through the cumulative
+kernel `Q̄_t` stored in a categorical schedule.
+
+Matrix-based sampling accepts any validated `K`-by-`K` row-stochastic matrix,
+including either `Q_t` or `Q̄_t`:
 
 ```wl
-kernel = uniformCategoricalTransitionKernel[3, 0.2];
-xt = categoricalForwardDiffuse[{1, 2, 3}, kernel, {0.1, 0.5, 0.9}];
+x0 = {1, 2, 3};
+
+kernel = uniformCategoricalTransitionKernel[
+  3,
+  0.2
+];
+
+x1 = categoricalForwardDiffuse[
+  x0,
+  kernel
+];
+```
+
+Time-indexed sampling uses the schedule's cumulative transition at `t`. As in
+the Gaussian core, `t = 0` returns `x0` exactly and does not consume the random
+stream. The explicit-noise form validates its noise at `t = 0` before returning
+`x0`.
+
+```wl
+schedule = makeUniformCategoricalSchedule[
+  3,
+  {0.1, 0.2, 0.3, 0.4}
+];
+
+xt = categoricalForwardDiffuseAt[
+  x0,
+  3,
+  schedule
+];
 ```
 
 ## Time embeddings
