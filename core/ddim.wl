@@ -2,11 +2,15 @@ If[
   DownValues[Stochasma`predictCleanSample] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "reverse.wl"}]]
 ];
+If[
+  DownValues[Stochasma`ddpmSample] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "sampling.wl"}]]
+];
 
 BeginPackage["Stochasma`"]
 
 ddimSample::usage =
-  "ddimSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] at each requested logical time and returns x0. \"Timesteps\" is Automatic or a non-empty strictly decreasing list in 1..T; \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xStart, ..., x0}, \"Timesteps\" -> {tStart, ..., 0}|>. \"Eta\" -> 0 is deterministic. For positive eta, Automatic noises use the current stream or a locally isolated Integer \"Seed\". Explicit \"Noises\" has the same length and order as \"Timesteps\"; its final entry is validated but ignored because the transition to time 0 adds no noise.";
+  "ddimSample[predictor, initialNoise, schedule, opts] applies predictor[xt, t] at each requested logical time and returns x0. initialNoise is the state at the first resolved timestep: with Automatic \"Timesteps\" it is xT, while an explicit sequence beginning below T interprets it at that first requested logical time. \"Timesteps\" is Automatic or a non-empty strictly decreasing list in 1..T; \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xStart, ..., x0}, \"Timesteps\" -> {tStart, ..., 0}|>. \"Eta\" -> 0 is deterministic. For positive eta, Automatic noises use the current stream or a locally isolated Integer \"Seed\". Explicit \"Noises\" has the same length and order as \"Timesteps\"; its final entry is validated but ignored because the transition to time 0 adds no noise.";
 
 Begin["`Private`"]
 
@@ -262,7 +266,9 @@ runDDIMTests[] := Module[
     fullNoises, fullResult, fullTrace, sparseTimesteps, sparseNoises,
     sparseTrace, manualEta, manualStep, manualExpected, sample, result,
     samples, stochasticInitial, automatic1, automatic2, seeded1, seeded2,
-    differentSeed, expectedNext, actualNext, changedFinalNoise},
+    differentSeed, expectedNext, actualNext, changedFinalNoise,
+    sigmaSquared, ancestralPredictor, ddpmNoises, ddimNoises, ddpmResult,
+    ddimResult},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ ddim/ddimSample: ", label];
@@ -298,6 +304,56 @@ runDDIMTests[] := Module[
   assert[
     "full-step predictor calls descend from T through 1",
     fullTrace === fullTimesteps
+  ];
+
+  sigmaSquared = Table[
+    With[
+      {
+        alphaBarT = schedule["AlphaBars"][[time]],
+        alphaBarPrevious = If[
+          time == 1,
+          1.,
+          schedule["AlphaBars"][[time - 1]]
+        ]
+      },
+      (1 - alphaBarPrevious)/(1 - alphaBarT)
+        (1 - alphaBarT/alphaBarPrevious)
+    ],
+    {time, schedule["Steps"]}
+  ];
+  assert[
+    "eta one consecutive-step variance equals DDPM posterior variance",
+    numericSamplesCloseQ[
+      sigmaSquared,
+      schedule["PosteriorVariances"]
+    ]
+  ];
+  ancestralPredictor = Function[
+    {state, time},
+    0.2 state + 0.01 time {1., -0.5, 0.25}
+  ];
+  ddpmNoises = Table[
+    {Sin[time], Cos[time], (time - 5.)/7.},
+    {time, schedule["Steps"]}
+  ];
+  ddimNoises = Reverse[ddpmNoises];
+  ddpmResult = ddpmSample[
+    ancestralPredictor,
+    initialNoise,
+    schedule,
+    "Noises" -> ddpmNoises
+  ];
+  ddimResult = ddimSample[
+    ancestralPredictor,
+    initialNoise,
+    schedule,
+    "Eta" -> 1.,
+    "Timesteps" -> fullTimesteps,
+    "Noises" -> ddimNoises
+  ];
+  assert[
+    "eta one full schedule matches DDPM with corresponding noises",
+    numericSamplesCloseQ[ddimResult, ddpmResult]
   ];
 
   sparseTimesteps = {10, 7, 4, 1};
