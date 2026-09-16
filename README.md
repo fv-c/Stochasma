@@ -26,8 +26,9 @@ The unreleased development version `0.2.0` currently provides:
 ## Time embeddings
 
 `sinusoidalTimeEmbedding` maps a non-negative scalar time to cosine and sine
-features without requiring a Wolfram neural-network object. The default
-maximum period is `10000.`; odd dimensions receive one trailing zero.
+features without requiring a Wolfram neural-network object. It requires at
+least two dimensions. The default maximum period is `10000.`; odd dimensions
+receive one trailing zero.
 
 ```wl
 timeFeatures = sinusoidalTimeEmbedding[500, 128];

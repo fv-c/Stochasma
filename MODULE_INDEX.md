@@ -18,4 +18,4 @@ are loaded by `Needs["Stochasma`"]`.
 | `core/objectives.wl` | `makeDiffusionTrainingSample` | `makeDiffusionTrainingSample[x0_, t_Integer, schedule_Association, noise_]` | Create a deterministic explicit-noise training example. |
 | `core/objectives.wl` | `epsilonPredictionLoss` | `epsilonPredictionLoss[predicted_, target_]` | Compute elementwise mean squared epsilon error. |
 | `core/sampling.wl` | `ddpmSample` | `ddpmSample[predictor_, initialNoise_, schedule_Association, opts___]` | Run reverse sampling with automatic, seeded, or explicit step noise. |
-| `models/embeddings.wl` | `sinusoidalTimeEmbedding` | `sinusoidalTimeEmbedding[time_, dimensions_Integer, opts___]` | Construct deterministic sinusoidal features for a non-negative diffusion time. |
+| `models/embeddings.wl` | `sinusoidalTimeEmbedding` | `sinusoidalTimeEmbedding[time_, dimensions_Integer, opts___]` | Construct at least two deterministic sinusoidal features for a non-negative diffusion time. |

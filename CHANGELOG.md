@@ -4,7 +4,7 @@
 
 - Add deterministic sinusoidal time embeddings for external predictors.
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-09-16
 
 - Add a modern Wolfram paclet entry point under the public `Stochasma`` context.
 - Add validated linear and cosine beta schedules.
