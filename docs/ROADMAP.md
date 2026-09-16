@@ -13,8 +13,10 @@ branch.
 
 ## 0.3
 
-- categorical diffusion;
-- discrete-state transition kernels.
+- [x] uniform categorical transition kernel;
+- [ ] categorical diffusion forward process;
+- [ ] discrete-state transition schedules;
+- [ ] categorical reverse and posterior primitives.
 
 ## 0.4
 

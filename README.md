@@ -25,7 +25,8 @@ The unreleased development version `0.3.0` currently provides:
 - Wolfram `NetChain` and `NetGraph` predictor adapters;
 - batched epsilon-prediction training data with controlled randomness;
 - deterministic or controlled-stochastic DDIM sampling over full or
-  subsampled reverse timesteps.
+  subsampled reverse timesteps;
+- a uniform categorical transition kernel.
 
 ## Time embeddings
 

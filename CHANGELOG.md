@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 — Unreleased
+
+- Add a uniform categorical transition kernel.
+
 ## 0.2.0 — 2026-09-16
 
 - Add deterministic sinusoidal time embeddings for external predictors.
