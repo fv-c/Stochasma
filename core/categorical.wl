@@ -10,7 +10,10 @@ makeUniformCategoricalSchedule::usage =
   "makeUniformCategoricalSchedule[categoryCount, betas] constructs one uniform categorical transition kernel for each finite beta in the inclusive range 0 through 1 and returns the validated categorical schedule.";
 
 categoricalForwardDiffuse::usage =
-  "categoricalForwardDiffuse[state, transitionKernel] samples a categorical state or array of states through a row-stochastic transition kernel. categoricalForwardDiffuse[state, transitionKernel, uniformNoise] uses explicit uniform variates in the half-open interval [0, 1) and is deterministic.";
+  "categoricalForwardDiffuse[state, transitionKernel] samples a categorical state or array of states through any valid row-stochastic transition matrix, including a one-step Q_t or cumulative Qbar_t, without resolving logical time. categoricalForwardDiffuse[state, transitionKernel, uniformNoise] uses explicit uniform variates in the half-open interval [0, 1) and is deterministic.";
+
+categoricalForwardDiffuseAt::usage =
+  "categoricalForwardDiffuseAt[x0, t, schedule] samples q(x_t | x_0) at logical time t by applying the cumulative row-vector transition Qbar_t stored in a categorical schedule. categoricalForwardDiffuseAt[x0, t, schedule, uniformNoise] uses explicit uniform variates deterministically. At t = 0 both forms return x0 exactly without generating noise; the explicit form still validates its noise.";
 
 Begin["`Private`"]
 
@@ -290,13 +293,84 @@ categoricalForwardDiffuse[___] := (
   $Failed
 );
 
+categoricalForwardDiffuseAt::args =
+  "categoricalForwardDiffuseAt expects a categorical state or rectangular array of states, an Integer time, a categorical schedule, and optional matching uniform noise.";
+categoricalForwardDiffuseAt::schedule =
+  "The supplied categorical schedule is malformed or internally inconsistent.";
+categoricalForwardDiffuseAt::state =
+  "Every state must be an Integer between 1 and the categorical schedule's category count.";
+categoricalForwardDiffuseAt::time =
+  "Time t must be an Integer in the inclusive range 0 through `1`.";
+categoricalForwardDiffuseAt::noise =
+  "Explicit uniform noise must match the state shape and contain only finite real values in the half-open interval [0, 1).";
+
+categoricalForwardDiffuseAt[x0_, t_Integer, schedule_Association] := Module[
+  {categoryCount},
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalForwardDiffuseAt::schedule];
+    Return[$Failed]
+  ];
+  categoryCount = schedule["CategoryCount"];
+  If[!TrueQ[categoricalStateQ[x0, categoryCount]],
+    Message[categoricalForwardDiffuseAt::state];
+    Return[$Failed]
+  ];
+  If[!TrueQ[0 <= t <= schedule["Steps"]],
+    Message[categoricalForwardDiffuseAt::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[t == 0, Return[x0]];
+  categoricalForwardDiffuse[
+    x0,
+    schedule["CumulativeTransitionKernels"][[t]]
+  ]
+];
+
+categoricalForwardDiffuseAt[
+  x0_,
+  t_Integer,
+  schedule_Association,
+  uniformNoise_
+] := Module[{categoryCount, dimensions},
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalForwardDiffuseAt::schedule];
+    Return[$Failed]
+  ];
+  categoryCount = schedule["CategoryCount"];
+  If[!TrueQ[categoricalStateQ[x0, categoryCount]],
+    Message[categoricalForwardDiffuseAt::state];
+    Return[$Failed]
+  ];
+  If[!TrueQ[0 <= t <= schedule["Steps"]],
+    Message[categoricalForwardDiffuseAt::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  dimensions = categoricalStateDimensions[x0];
+  If[!TrueQ[categoricalUniformNoiseQ[uniformNoise, dimensions]],
+    Message[categoricalForwardDiffuseAt::noise];
+    Return[$Failed]
+  ];
+  If[t == 0, Return[x0]];
+  categoricalForwardDiffuse[
+    x0,
+    schedule["CumulativeTransitionKernels"][[t]],
+    uniformNoise
+  ]
+];
+
+categoricalForwardDiffuseAt[___] := (
+  Message[categoricalForwardDiffuseAt::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runCategoricalTests[] := Module[
   {
     passed = 0, assert, kernel, expected, permutation, states,
     randomSample, expectedNoise, q1, q2, q3, schedule, uniformBetas,
-    uniformSchedule
+    uniformSchedule, x0, noise, t, samples, expectedNext, actualNext,
+    replay1, replay2
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -477,6 +551,36 @@ runCategoricalTests[] := Module[
     randomSample === categoricalForwardDiffuse[states, kernel, expectedNoise]
   ];
   assert[
+    "matrix-based automatic sampling advances and replays the random stream",
+    (expectedNext = BlockRandom[
+      SeedRandom[4172];
+      RandomReal[{0, 1}, Dimensions[states]];
+      RandomReal[]
+    ];
+    actualNext = BlockRandom[
+      SeedRandom[4172];
+      categoricalForwardDiffuse[states, kernel];
+      RandomReal[]
+    ];
+    replay1 = BlockRandom[
+      SeedRandom[4172];
+      categoricalForwardDiffuse[states, kernel]
+    ];
+    replay2 = BlockRandom[
+      SeedRandom[4172];
+      categoricalForwardDiffuse[states, kernel]
+    ];
+    actualNext === expectedNext && replay1 === replay2)
+  ];
+  assert[
+    "matrix-based explicit noise does not consult the random stream",
+    BlockRandom[
+      SeedRandom[4172];
+      categoricalForwardDiffuse[states, kernel, ConstantArray[0.5, {2, 2}]];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[4172]; RandomReal[]]
+  ];
+  assert[
     "rejects invalid categorical states",
     Quiet[categoricalForwardDiffuse[0, kernel, 0.5]] === $Failed &&
       Quiet[categoricalForwardDiffuse[4, kernel, 0.5]] === $Failed &&
@@ -502,6 +606,109 @@ runCategoricalTests[] := Module[
       Quiet[categoricalForwardDiffuse[1, kernel, -0.1]] === $Failed &&
       Quiet[categoricalForwardDiffuse[1, kernel, 1.]] === $Failed &&
       Quiet[categoricalForwardDiffuse[1]] === $Failed
+  ];
+
+  schedule = makeUniformCategoricalSchedule[3, {0.1, 0.2, 0.3}];
+  x0 = {1, 2, 3};
+  noise = {0.1, 0.5, 0.9};
+  t = 2;
+  assert[
+    "time-indexed t = 0 returns the clean state exactly",
+    categoricalForwardDiffuseAt[x0, 0, schedule] === x0 &&
+      categoricalForwardDiffuseAt[x0, 0, schedule, noise] === x0
+  ];
+  assert[
+    "time-indexed explicit sampling delegates through Qbar_t",
+    categoricalForwardDiffuseAt[x0, t, schedule, noise] ===
+      categoricalForwardDiffuse[
+        x0,
+        schedule["CumulativeTransitionKernels"][[t]],
+        noise
+      ]
+  ];
+  samples = {
+    1,
+    {1, 2, 3},
+    {{1, 2}, {3, 1}},
+    {{{1, 2}, {3, 1}}, {{2, 3}, {1, 2}}}
+  };
+  assert[
+    "time-indexed sampling preserves scalar vector matrix and tensor shapes",
+    AllTrue[
+      samples,
+      Function[sample,
+        Dimensions[categoricalForwardDiffuseAt[
+          sample,
+          2,
+          schedule,
+          If[
+            IntegerQ[sample],
+            0.5,
+            ConstantArray[0.5, Dimensions[sample]]
+          ]
+        ]] === Dimensions[sample]
+      ]
+    ]
+  ];
+  assert[
+    "time-indexed automatic sampling advances and replays the random stream",
+    (expectedNext = BlockRandom[
+      SeedRandom[8314];
+      RandomReal[{0, 1}, Dimensions[x0]];
+      RandomReal[]
+    ];
+    actualNext = BlockRandom[
+      SeedRandom[8314];
+      categoricalForwardDiffuseAt[x0, t, schedule];
+      RandomReal[]
+    ];
+    replay1 = BlockRandom[
+      SeedRandom[8314];
+      categoricalForwardDiffuseAt[x0, t, schedule]
+    ];
+    replay2 = BlockRandom[
+      SeedRandom[8314];
+      categoricalForwardDiffuseAt[x0, t, schedule]
+    ];
+    actualNext === expectedNext && replay1 === replay2)
+  ];
+  assert[
+    "time-indexed explicit noise and t = 0 do not consult the random stream",
+    BlockRandom[
+      SeedRandom[8314];
+      categoricalForwardDiffuseAt[x0, t, schedule, noise];
+      categoricalForwardDiffuseAt[x0, 0, schedule];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[8314]; RandomReal[]]
+  ];
+  assert[
+    "time-indexed sampling rejects invalid times",
+    Quiet[categoricalForwardDiffuseAt[x0, -1, schedule, noise]] === $Failed &&
+      Quiet[categoricalForwardDiffuseAt[x0, 4, schedule, noise]] === $Failed &&
+      Quiet[categoricalForwardDiffuseAt[x0, 2., schedule, noise]] === $Failed
+  ];
+  assert[
+    "time-indexed sampling rejects malformed schedules and states",
+    Quiet[categoricalForwardDiffuseAt[
+      x0,
+      t,
+      ReplacePart[schedule, "CategoryCount" -> 4],
+      noise
+    ]] === $Failed &&
+      Quiet[categoricalForwardDiffuseAt[
+        x0,
+        t,
+        KeyDrop[schedule, "CumulativeTransitionKernels"],
+        noise
+      ]] === $Failed &&
+      Quiet[categoricalForwardDiffuseAt[{1, 4}, t, schedule, {0.1, 0.2}]] ===
+        $Failed
+  ];
+  assert[
+    "time-indexed explicit form validates noise at t = 0",
+    Quiet[categoricalForwardDiffuseAt[x0, 0, schedule, {0.1}]] === $Failed &&
+      Quiet[categoricalForwardDiffuseAt[x0, 0, schedule, {0.1, 0.5, 1.}]] ===
+        $Failed
   ];
 
   Print["✓ categorical — ", passed, " tests passed"];
