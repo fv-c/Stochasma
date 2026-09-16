@@ -6,7 +6,7 @@ If[
 BeginPackage["Stochasma`"]
 
 makeDiffusionTrainingSample::usage =
-  "makeDiffusionTrainingSample[x0, t, schedule] creates an epsilon-prediction training example at t in 1 through T. The four-argument form uses explicit same-shape noise deterministically and returns keys \"Clean\", \"Noisy\", \"Time\", and \"Noise\".";
+  "makeDiffusionTrainingSample[x0, t, schedule] creates an epsilon-prediction training example at t in 1 through T using the current random stream. The four-argument form uses explicit same-shape noise deterministically and returns keys \"Clean\", \"Noisy\", \"Time\", and \"Noise\".";
 
 epsilonPredictionLoss::usage =
   "epsilonPredictionLoss[predicted, target] returns the mean squared error between same-shape finite real epsilon samples.";
@@ -41,7 +41,7 @@ makeDiffusionTrainingSample[
     Message[makeDiffusionTrainingSample::time, schedule["Steps"]];
     Return[$Failed]
   ];
-  noise = BlockRandom[randomNormalLike[x0]];
+  noise = randomNormalLike[x0];
   makeDiffusionTrainingSample[x0, t, schedule, noise]
 ];
 
@@ -103,7 +103,8 @@ epsilonPredictionLoss[___] := (
 
 runObjectivesTests[] := Module[
   {passed = 0, assert, schedule, x0, noise, t, sample, samples,
-    baseline, withCall},
+    stochasticInput, firstDraw, secondDraw, replay1, replay2,
+    expectedNext, actualNext},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ objectives/makeDiffusionTrainingSample: ", label];
@@ -147,18 +148,43 @@ runObjectivesTests[] := Module[
       ] === Dimensions[#] &
     ]
   ];
-  baseline = BlockRandom[SeedRandom[2468]; {RandomReal[], RandomReal[]}];
-  withCall = BlockRandom[
+  stochasticInput = ConstantArray[0., 64];
+  {firstDraw, secondDraw} = BlockRandom[
     SeedRandom[2468];
     {
-      RandomReal[],
-      makeDiffusionTrainingSample[x0, t, schedule];
-      RandomReal[]
+      makeDiffusionTrainingSample[stochasticInput, t, schedule],
+      makeDiffusionTrainingSample[stochasticInput, t, schedule]
     }
   ];
   assert[
-    "generated training noise does not advance caller random state",
-    baseline === withCall
+    "consecutive stochastic training samples consume the current random stream",
+    firstDraw =!= secondDraw
+  ];
+  replay1 = BlockRandom[
+    SeedRandom[2468];
+    makeDiffusionTrainingSample[stochasticInput, t, schedule]
+  ];
+  replay2 = BlockRandom[
+    SeedRandom[2468];
+    makeDiffusionTrainingSample[stochasticInput, t, schedule]
+  ];
+  assert[
+    "resetting the current random stream reproduces training noise",
+    replay1 === replay2
+  ];
+  expectedNext = BlockRandom[
+    SeedRandom[2468];
+    randomNormalLike[stochasticInput];
+    RandomReal[]
+  ];
+  actualNext = BlockRandom[
+    SeedRandom[2468];
+    makeDiffusionTrainingSample[stochasticInput, t, schedule];
+    RandomReal[]
+  ];
+  assert[
+    "stochastic training sample advances the stream by one same-shape draw",
+    actualNext === expectedNext
   ];
   assert[
     "invalid training times fail",
