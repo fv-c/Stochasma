@@ -133,6 +133,14 @@ runObjectivesTests[] := Module[
     "explicit-noise training sample is deterministic",
     sample === makeDiffusionTrainingSample[x0, t, schedule, noise]
   ];
+  assert[
+    "explicit training noise does not consult the current random stream",
+    BlockRandom[
+      SeedRandom[6420];
+      makeDiffusionTrainingSample[x0, t, schedule, noise];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[6420]; RandomReal[]]
+  ];
   samples = {
     1.5,
     {1., 2.},
@@ -189,10 +197,21 @@ runObjectivesTests[] := Module[
   assert[
     "invalid training times fail",
     Quiet[makeDiffusionTrainingSample[x0, 0, schedule, noise]] === $Failed &&
-      Quiet[makeDiffusionTrainingSample[x0, 9, schedule, noise]] === $Failed
+      Quiet[makeDiffusionTrainingSample[x0, 9, schedule, noise]] === $Failed &&
+      Quiet[makeDiffusionTrainingSample[x0, 2., schedule, noise]] === $Failed
   ];
   assert[
-    "invalid noise shape and malformed schedule fail",
+    "invalid samples, noise, and malformed schedules fail",
+    Quiet[
+      makeDiffusionTrainingSample[
+        {1., Infinity, -1.}, t, schedule, noise
+      ]
+    ] === $Failed &&
+      Quiet[
+        makeDiffusionTrainingSample[
+          x0, t, schedule, {0., Indeterminate, 0.}
+        ]
+      ] === $Failed &&
     Quiet[makeDiffusionTrainingSample[x0, t, schedule, {0.}]] === $Failed &&
       Quiet[
         makeDiffusionTrainingSample[

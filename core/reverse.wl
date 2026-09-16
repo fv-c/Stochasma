@@ -209,8 +209,16 @@ runReverseTests[] := Module[
       Quiet[predictCleanSample[samples[[2]], 9, noises[[2]], schedule]] === $Failed
   ];
   assert[
-    "invalid predicted-noise shape fails",
-    Quiet[predictCleanSample[samples[[2]], t, {0., 0.}, schedule]] === $Failed
+    "invalid sample and predicted noise fail",
+    Quiet[
+      predictCleanSample[{1., Infinity, -1.}, t, noises[[2]], schedule]
+    ] === $Failed &&
+      Quiet[
+        predictCleanSample[samples[[2]], t, {0., Infinity, 0.}, schedule]
+      ] === $Failed &&
+      Quiet[
+        predictCleanSample[samples[[2]], t, {0., 0.}, schedule]
+      ] === $Failed
   ];
   assert[
     "malformed schedules fail",
@@ -300,6 +308,16 @@ runReverseTests[] := Module[
     ]
   ];
   assert[
+    "explicit reverse noise does not consult the current random stream",
+    BlockRandom[
+      SeedRandom[8765];
+      reverseDiffuseStep[
+        noisySamples[[2]], t, noises[[2]], schedule, explicitNoise
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[8765]; RandomReal[]]
+  ];
+  assert[
     "t = 1 adds no noise",
     numericSamplesCloseQ[
       reverseDiffuseStep[
@@ -373,10 +391,19 @@ runReverseTests[] := Module[
     ] === BlockRandom[SeedRandom[5678]; RandomReal[]]
   ];
   assert[
-    "reverse step rejects invalid explicit-noise shape",
+    "reverse step rejects invalid explicit-noise values and shape",
     Quiet[
       reverseDiffuseStep[noisySamples[[2]], t, noises[[2]], schedule, {0.}]
-    ] === $Failed
+    ] === $Failed &&
+      Quiet[
+        reverseDiffuseStep[
+          noisySamples[[2]],
+          t,
+          noises[[2]],
+          schedule,
+          {0., Indeterminate, 0.}
+        ]
+      ] === $Failed
   ];
   assert[
     "reverse step rejects times outside 1 through T",
@@ -385,6 +412,9 @@ runReverseTests[] := Module[
     ] === $Failed &&
       Quiet[
         reverseDiffuseStep[samples[[2]], 9, noises[[2]], schedule]
+      ] === $Failed &&
+      Quiet[
+        reverseDiffuseStep[samples[[2]], 2., noises[[2]], schedule]
       ] === $Failed
   ];
 

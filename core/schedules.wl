@@ -249,7 +249,10 @@ runSchedulesTests[] := Module[
     Quiet[cosineBetaSchedule[0]] === $Failed &&
       Quiet[cosineBetaSchedule[10, "Offset" -> -0.1]] === $Failed &&
       Quiet[cosineBetaSchedule[10, "MaxBeta" -> 1.]] === $Failed &&
-      Quiet[cosineBetaSchedule[10, "Unknown" -> 1]] === $Failed
+      Quiet[cosineBetaSchedule[10, "Unknown" -> 1]] === $Failed &&
+      Quiet[
+        cosineBetaSchedule[10, "Offset" -> 0.01, "Offset" -> 0.02]
+      ] === $Failed
   ];
 
   schedule = makeDiffusionSchedule[linearBetaSchedule[5, 0.01, 0.05]];
@@ -341,6 +344,8 @@ runSchedulesTests[] := Module[
     Quiet[makeDiffusionSchedule[{}]] === $Failed &&
       Quiet[makeDiffusionSchedule[{0.1, 1.}]] === $Failed &&
       Quiet[makeDiffusionSchedule[{0.1, Indeterminate}]] === $Failed &&
+      Quiet[makeDiffusionSchedule[{0.1, Infinity}]] === $Failed &&
+      Quiet[makeDiffusionSchedule[{0.1, symbolicBeta}]] === $Failed &&
       Quiet[makeDiffusionSchedule[0.1]] === $Failed &&
       !diffusionScheduleQ[ReplacePart[schedule, "Steps" -> 4]]
   ];

@@ -120,6 +120,14 @@ runForwardTests[] := Module[
     forwardDiffuse[x0, t, schedule, noise] ===
       forwardDiffuse[x0, t, schedule, noise]
   ];
+  assert[
+    "explicit noise does not consult the current random stream",
+    BlockRandom[
+      SeedRandom[4321];
+      forwardDiffuse[x0, t, schedule, noise];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[4321]; RandomReal[]]
+  ];
   samples = {
     1.5,
     {1., 2.},
@@ -190,11 +198,13 @@ runForwardTests[] := Module[
   assert[
     "invalid time boundaries fail",
     Quiet[forwardDiffuse[x0, -1, schedule, noise]] === $Failed &&
-      Quiet[forwardDiffuse[x0, 9, schedule, noise]] === $Failed
+      Quiet[forwardDiffuse[x0, 9, schedule, noise]] === $Failed &&
+      Quiet[forwardDiffuse[x0, 2., schedule, noise]] === $Failed
   ];
   assert[
-    "invalid samples and noise shape fail",
+    "invalid samples, noise values, and noise shape fail",
     Quiet[forwardDiffuse[{1., Infinity}, 2, schedule, {0., 0.}]] === $Failed &&
+      Quiet[forwardDiffuse[x0, 2, schedule, {0., Infinity, 0.}]] === $Failed &&
       Quiet[forwardDiffuse[x0, 2, schedule, {0., 0.}]] === $Failed
   ];
   assert[
