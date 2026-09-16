@@ -20,3 +20,4 @@ are loaded by `Needs["Stochasma`"]`.
 | `core/sampling.wl` | `ddpmSample` | `ddpmSample[predictor_, initialNoise_, schedule_Association, opts___]` | Run reverse sampling with automatic, seeded, or explicit step noise. |
 | `models/embeddings.wl` | `sinusoidalTimeEmbedding` | `sinusoidalTimeEmbedding[time_, dimensions_Integer, opts___]` | Construct at least two deterministic sinusoidal features for a non-negative diffusion time. |
 | `models/adapters.wl` | `makeWolframNetPredictor` | `makeWolframNetPredictor[network_, inputAdapter_: Automatic]` | Return a callable `predictor[xt, t]` bridge; the network produces epsilon predictions and `ddpmSample` validates their shape and finiteness. |
+| `models/training.wl` | `makeDiffusionTrainingBatch` | `makeDiffusionTrainingBatch[cleanSamples_List, schedule_Association, opts___]` | Create a batch of epsilon-prediction training associations with automatic, seeded, or explicit times and noises. |

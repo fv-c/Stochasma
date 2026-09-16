@@ -22,7 +22,8 @@ The unreleased development version `0.2.0` currently provides:
 - framework-independent training samples and epsilon loss;
 - predictor-driven DDPM sampling with seeded or explicit randomness;
 - deterministic sinusoidal time embeddings;
-- Wolfram `NetChain` and `NetGraph` predictor adapters.
+- Wolfram `NetChain` and `NetGraph` predictor adapters;
+- batched epsilon-prediction training data with controlled randomness.
 
 ## Time embeddings
 
@@ -74,6 +75,26 @@ predictor = makeWolframNetPredictor[
 The network is responsible for returning an epsilon prediction compatible
 with the sampler protocol. `ddpmSample`, rather than the adapter, validates the
 prediction shape and finiteness.
+
+## Training batches
+
+`makeDiffusionTrainingBatch` creates one neutral training association per clean
+sample. Automatic times are drawn uniformly from `1..T`, and automatic noises
+match each sample's shape. Use an integer seed for reproducible, locally
+isolated randomness:
+
+```wl
+batch = makeDiffusionTrainingBatch[
+  cleanSamples,
+  schedule,
+  "Seed" -> 1234
+];
+```
+
+Pass matching `"Times"` and `"Noises"` lists for a fully deterministic batch.
+Each result has the same `"Clean"`, `"Noisy"`, `"Time"`, and `"Noise"` fields
+as `makeDiffusionTrainingSample`, so callers remain free to adapt them to a
+specific training framework or network port layout.
 
 ## Local installation and loading
 

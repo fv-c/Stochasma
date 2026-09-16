@@ -74,4 +74,5 @@ core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
+models/training.wl  batched epsilon-prediction training data
 ```
