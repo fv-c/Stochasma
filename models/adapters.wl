@@ -1,26 +1,29 @@
-If[
-  DownValues[Stochasma`sinusoidalTimeEmbedding] === {},
-  Get[FileNameJoin[{DirectoryName[$InputFileName], "embeddings.wl"}]]
-];
-
 BeginPackage["Stochasma`"]
 
 makeWolframNetPredictor::usage =
-  "makeWolframNetPredictor[network, inputAdapter] returns a predictor function with the contract predictor[xt, t] for a Wolfram NetChain or NetGraph. By default, the network receives <|\"Sample\" -> xt, \"Time\" -> N[t]|>. An explicit inputAdapter[xt, t] may construct any input accepted by the network, including sinusoidal time features or a single tensor.";
+  "makeWolframNetPredictor[network, inputAdapter] returns a function called as predictor[xt, t] that adapts inputs to a Wolfram NetChain or NetGraph. By default, the network receives <|\"Sample\" -> xt, \"Time\" -> N[t]|>. An explicit inputAdapter[xt, t] may construct any input accepted by the network. The network is responsible for producing an epsilon prediction compatible with the sampler protocol; ddpmSample validates prediction shape and finiteness.";
 
 Begin["`Private`"]
 
 makeWolframNetPredictor::args =
   "makeWolframNetPredictor expects a NetChain or NetGraph and, optionally, a callable input adapter.";
+makeWolframNetPredictor::adapter =
+  "The input adapter must be Automatic or a callable expression.";
 makeWolframNetPredictor::input =
   "The input adapter failed to construct a network input from xt and t.";
 makeWolframNetPredictor::network =
   "The Wolfram neural network failed to evaluate the adapted input.";
 
+clearlyNonCallableAdapterQ[value_] := NumberQ[value] || StringQ[value];
+
 makeWolframNetPredictor[
   network : (_NetChain | _NetGraph),
   inputAdapter_ : Automatic
 ] := Module[{adapter},
+  If[clearlyNonCallableAdapterQ[inputAdapter],
+    Message[makeWolframNetPredictor::adapter];
+    Return[$Failed]
+  ];
   adapter = If[
     inputAdapter === Automatic,
     Function[{xt, time}, <|"Sample" -> xt, "Time" -> N[time]|>],
@@ -53,8 +56,8 @@ makeWolframNetPredictor[___] := (
 runAdaptersTests[] := Module[
   {
     passed = 0, assert, twoInputNetwork, defaultPredictor, sample,
-    prediction, embeddingNetwork, embeddingPredictor,
-    embeddingPrediction, expectedEmbeddingPrediction, singleInputNetwork,
+    prediction, namedInputNetwork, namedInputPredictor,
+    namedInputPrediction, expectedNamedInputPrediction, singleInputNetwork,
     singleInputPredictor, before, after, failingPredictor
   },
   assert[label_, expression_] := If[TrueQ[expression],
@@ -64,10 +67,15 @@ runAdaptersTests[] := Module[
   ];
 
   twoInputNetwork = NetGraph[
-    {"Sum" -> ThreadingLayer[Plus]},
+    {
+      "ExpandTime" -> ReplicateLayer[3],
+      "FlattenTime" -> FlattenLayer[],
+      "Sum" -> ThreadingLayer[Plus]
+    },
     {
       NetPort["Sample"] -> NetPort["Sum", 1],
-      NetPort["Time"] -> NetPort["Sum", 2]
+      NetPort["Time"] -> "ExpandTime" -> "FlattenTime" ->
+        NetPort["Sum", 2]
     },
     "Sample" -> 3,
     "Time" -> "Scalar"
@@ -85,7 +93,7 @@ runAdaptersTests[] := Module[
       Max[Abs[prediction - {3., 4., 5.}]] < 10^-6
   ];
 
-  embeddingNetwork = NetGraph[
+  namedInputNetwork = NetGraph[
     {"Sum" -> ThreadingLayer[Plus]},
     {
       NetPort["State"] -> NetPort["Sum", 1],
@@ -94,22 +102,21 @@ runAdaptersTests[] := Module[
     "State" -> 4,
     "Embedding" -> 4
   ];
-  embeddingPredictor = makeWolframNetPredictor[
-    embeddingNetwork,
+  namedInputPredictor = makeWolframNetPredictor[
+    namedInputNetwork,
     Function[{xt, time},
       <|
         "State" -> xt,
-        "Embedding" -> sinusoidalTimeEmbedding[time, 4]
+        "Embedding" -> ConstantArray[N[time], 4]
       |>
     ]
   ];
-  expectedEmbeddingPrediction =
-    {0.5, -0.5, 1., -1.} + sinusoidalTimeEmbedding[3, 4];
-  embeddingPrediction = embeddingPredictor[{0.5, -0.5, 1., -1.}, 3];
+  expectedNamedInputPrediction = {0.5, -0.5, 1., -1.} + {3., 3., 3., 3.};
+  namedInputPrediction = namedInputPredictor[{0.5, -0.5, 1., -1.}, 3];
   assert[
-    "a custom adapter can supply named sinusoidal inputs",
-    Dimensions[embeddingPrediction] === {4} &&
-      Max[Abs[embeddingPrediction - expectedEmbeddingPrediction]] < 10^-6
+    "a custom adapter can supply named deterministic inputs",
+    Dimensions[namedInputPrediction] === {4} &&
+      Max[Abs[namedInputPrediction - expectedNamedInputPrediction]] < 10^-6
   ];
 
   singleInputNetwork = NetChain[
@@ -159,6 +166,10 @@ runAdaptersTests[] := Module[
   assert[
     "a network-evaluation failure is propagated",
     Quiet[failingPredictor[sample, 2]] === $Failed
+  ];
+  assert[
+    "a clearly non-callable input adapter is rejected",
+    Quiet[makeWolframNetPredictor[twoInputNetwork, 42]] === $Failed
   ];
   assert[
     "non-network callables are rejected",

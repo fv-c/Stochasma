@@ -45,16 +45,19 @@ customFeatures = sinusoidalTimeEmbedding[
 
 ## Wolfram neural-network adapter
 
-`makeWolframNetPredictor` turns a `NetGraph` with `"Sample"` and `"Time"`
-inputs into the callable protocol used by `ddpmSample`:
+`makeWolframNetPredictor` returns a function that adapts `predictor[xt, t]`
+calls to a Wolfram neural network. With the automatic input adapter, a
+`NetGraph` receives `<|"Sample" -> xt, "Time" -> N[t]|>`:
 
 ```wl
 predictor = makeWolframNetPredictor[epsilonNetwork];
 predictedNoise = predictor[xt, 500];
 ```
 
-Pass an explicit input adapter for different port names, sinusoidal features,
-or a single-input `NetChain`:
+Pass an explicit input adapter for different port names, any locally chosen
+time representation, or a single-input `NetChain`. Using
+`sinusoidalTimeEmbedding` is an optional composition rather than a requirement
+of the network bridge:
 
 ```wl
 predictor = makeWolframNetPredictor[
@@ -67,6 +70,10 @@ predictor = makeWolframNetPredictor[
   ]
 ];
 ```
+
+The network is responsible for returning an epsilon prediction compatible
+with the sampler protocol. `ddpmSample`, rather than the adapter, validates the
+prediction shape and finiteness.
 
 ## Local installation and loading
 

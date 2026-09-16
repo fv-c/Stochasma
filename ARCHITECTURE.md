@@ -32,10 +32,12 @@ trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit reverse noises use a
 length-`T` list indexed by logical time; the `t = 1` entry is not added because
 the posterior variance is zero.
 
-Model-facing utilities are independent of the deterministic DDPM core. A
-sinusoidal time embedding can be passed to an external predictor. Wolfram
-neural-network adapters translate `predictor[xt, t]` calls into network inputs,
-but the core does not prescribe a network architecture or input layout.
+Model-facing utilities are independent of the deterministic DDPM core and are
+independently composable with one another. Time embeddings may be used by an
+input adapter, but the Wolfram neural-network bridge does not depend on a
+specific embedding representation. Neural-network adapters translate
+`predictor[xt, t]` calls into network inputs, but the core does not prescribe a
+network architecture or input layout.
 
 ## Time convention
 
