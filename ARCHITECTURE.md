@@ -5,7 +5,7 @@
 Stochasma provides general-purpose diffusion-model primitives for the Wolfram
 Language. Version 0.1 implements Gaussian diffusion / DDPM without assumptions
 about images, music, or a particular neural-network architecture. Version 0.2
-adds model-facing utilities while preserving that separation.
+adds model-facing utilities and DDIM sampling while preserving that separation.
 
 ## Layers
 
@@ -27,10 +27,18 @@ Dependencies point downward only where mathematically required. The predictor
 is supplied externally through the callable protocol `predictor[xt, t]` and is
 not part of the deterministic DDPM core.
 
-The sampler traverses `T, T-1, ..., 1` and produces `x0`. When requested, its
-trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit reverse noises use a
-length-`T` list indexed by logical time; the `t = 1` entry is not added because
-the posterior variance is zero.
+The DDPM sampler traverses `T, T-1, ..., 1` and produces `x0`. When requested,
+its trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit DDPM reverse noises
+use a length-`T` list indexed by logical time; the `t = 1` entry is not added
+because the posterior variance is zero.
+
+The DDIM sampler accepts either that full reverse sequence or a non-empty,
+strictly decreasing subsequence of logical times. It calls the same
+`predictor[xt, t]` protocol exactly at those times and then transitions to
+mathematical time `0`. A returned DDIM trajectory aligns
+`{xStart, ..., x0}` with `{tStart, ..., 0}`. Explicit DDIM noises follow the
+requested timestep order and have the same length; the final entry is validated
+but ignored because the transition to `0` has zero stochastic coefficient.
 
 Model-facing utilities are independent of the deterministic DDPM core and are
 independently composable with one another. Time embeddings may be used by an
@@ -72,6 +80,7 @@ core/forward.wl     forward process q(x_t | x_0)
 core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
+core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

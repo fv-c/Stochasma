@@ -23,7 +23,9 @@ The unreleased development version `0.2.0` currently provides:
 - predictor-driven DDPM sampling with seeded or explicit randomness;
 - deterministic sinusoidal time embeddings;
 - Wolfram `NetChain` and `NetGraph` predictor adapters;
-- batched epsilon-prediction training data with controlled randomness.
+- batched epsilon-prediction training data with controlled randomness;
+- deterministic or controlled-stochastic DDIM sampling over full or
+  subsampled reverse timesteps.
 
 ## Time embeddings
 
@@ -73,8 +75,8 @@ predictor = makeWolframNetPredictor[
 ```
 
 The network is responsible for returning an epsilon prediction compatible
-with the sampler protocol. `ddpmSample`, rather than the adapter, validates the
-prediction shape and finiteness.
+with the sampler protocol. The DDPM and DDIM samplers, rather than the adapter,
+validate the prediction shape and finiteness.
 
 ## Training batches
 
@@ -170,6 +172,29 @@ With `"ReturnTrajectory" -> True`, `ddpmSample` returns
 `<|"Sample" -> x0, "Trajectory" -> {xT, ..., x0}|>`. The `"Noises"` option
 accepts a length-`T` list indexed by logical time for fully explicit reverse
 randomness; its `t = 1` entry is validated but not added.
+
+## DDIM sampling
+
+`ddimSample` uses the same `predictor[xt, t]` contract. `"Eta" -> 0.` is
+deterministic, while a positive eta enables controlled stochastic sampling.
+`"Timesteps"` selects a full or subsampled reverse trajectory:
+
+```wl
+sample = ddimSample[
+  predictor,
+  initialNoise,
+  schedule,
+  "Eta" -> 0.,
+  "Timesteps" -> {1000, 800, 600, 400, 200, 1}
+];
+```
+
+Explicit timesteps must be non-empty, valid, and strictly decreasing; the
+sampler always adds the final transition to logical time `0`. Explicit
+`"Noises"` must have the same length and order as the resolved timestep list.
+Its final entry is validated but ignored because the transition to `x0` adds
+no noise. With `"ReturnTrajectory" -> True`, trajectory states and returned
+timesteps align as `{xStart, ..., x0}` and `{tStart, ..., 0}`.
 
 ## Tests and example
 
