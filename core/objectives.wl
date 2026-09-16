@@ -8,6 +8,9 @@ BeginPackage["Stochasma`"]
 makeDiffusionTrainingSample::usage =
   "makeDiffusionTrainingSample[x0, t, schedule] creates an epsilon-prediction training example at t in 1 through T. The four-argument form uses explicit same-shape noise deterministically and returns keys \"Clean\", \"Noisy\", \"Time\", and \"Noise\".";
 
+epsilonPredictionLoss::usage =
+  "epsilonPredictionLoss[predicted, target] returns the mean squared error between same-shape finite real epsilon samples.";
+
 Begin["`Private`"]
 
 makeDiffusionTrainingSample::sample =
@@ -75,6 +78,24 @@ makeDiffusionTrainingSample[
 
 makeDiffusionTrainingSample[___] := (
   Message[makeDiffusionTrainingSample::args];
+  $Failed
+);
+
+epsilonPredictionLoss::shape =
+  "Predicted and target epsilon samples must be finite, real-valued, and have the same shape.";
+epsilonPredictionLoss::args =
+  "epsilonPredictionLoss expects predicted and target epsilon samples.";
+
+epsilonPredictionLoss[predicted_, target_] := Module[{},
+  If[!sameSampleShapeQ[predicted, target],
+    Message[epsilonPredictionLoss::shape];
+    Return[$Failed]
+  ];
+  Mean[Flatten[{(predicted - target)^2}]]
+];
+
+epsilonPredictionLoss[___] := (
+  Message[epsilonPredictionLoss::args];
   $Failed
 );
 
@@ -155,6 +176,32 @@ runObjectivesTests[] := Module[
           noise
         ]
       ] === $Failed
+  ];
+
+  assert[
+    "identical predictions have zero loss",
+    epsilonPredictionLoss[noise, noise] == 0
+  ];
+  assert[
+    "vector loss is elementwise mean squared error",
+    epsilonPredictionLoss[{1., 2.}, {0., 0.}] == 2.5
+  ];
+  assert[
+    "scalar loss is squared error",
+    epsilonPredictionLoss[3., 1.] == 4.
+  ];
+  assert[
+    "matrix and tensor losses reduce over every element",
+    epsilonPredictionLoss[{{1., -1.}, {1., -1.}}, ConstantArray[0., {2, 2}]] == 1. &&
+      epsilonPredictionLoss[
+        ArrayReshape[Range[8], {2, 2, 2}],
+        ConstantArray[0, {2, 2, 2}]
+      ] == Mean[Range[8]^2]
+  ];
+  assert[
+    "mismatched shapes and non-finite values fail",
+    Quiet[epsilonPredictionLoss[{1., 2.}, {1.}]] === $Failed &&
+      Quiet[epsilonPredictionLoss[{1., Infinity}, {1., 2.}]] === $Failed
   ];
 
   Print["✓ objectives — ", passed, " tests passed"];
