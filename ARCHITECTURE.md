@@ -83,6 +83,30 @@ or another categorical transition. It does not resolve logical time.
 stored cumulative matrix `Q̄_t`. As in the Gaussian core, `t = 0` is the
 clean state, while schedule arrays are indexed at logical times `1..T`.
 
+## Categorical reverse process
+
+For scalar states `x_0 = i` and `x_t = k`, the exact posterior uses the
+previous cumulative transition and the current one-step transition:
+
+```text
+q(x_(t-1) = j | x_t = k, x_0 = i)
+  ∝ Q̄_(t-1)[i, j] Q_t[j, k]
+```
+
+At `t = 1`, `Q̄_0` is the identity matrix and does not index the schedule.
+The model predicts a probability distribution on `x_0`, rather than the
+reverse-step posterior directly. The reverse probabilities marginalize the
+exact posterior:
+
+```text
+p_theta(x_(t-1) | x_t)
+  = Σ_i p_theta(x_0 = i | x_t, t) q(x_(t-1) | x_t, x_0 = i)
+```
+
+`categoricalReverseStep` samples once from this marginalized probability
+vector. A multi-step categorical reverse sampler is not part of version 0.3.0
+yet.
+
 ## Invariants
 
 - The Gaussian core accepts real-valued numeric scalars and arrays.
@@ -115,7 +139,7 @@ core/reverse.wl     clean reconstruction, posterior, and reverse step
 core/objectives.wl  framework-independent training primitives
 core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
-core/categorical.wl categorical transition kernels, schedules, and forward sampling
+core/categorical.wl categorical kernels, schedules, forward sampling, and reverse primitives
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data

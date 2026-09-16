@@ -17,7 +17,10 @@ branch.
 - [x] categorical transition sampling;
 - [x] discrete-state transition schedules;
 - [x] time-indexed categorical forward diffusion;
-- [ ] categorical reverse and posterior primitives.
+- [x] exact categorical posterior;
+- [x] predicted-`x0` reverse probabilities;
+- [x] categorical single reverse step;
+- [ ] categorical reverse sampler.
 
 ## 0.4
 

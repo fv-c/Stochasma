@@ -30,7 +30,10 @@ The unreleased development version `0.3.0` currently provides:
 - categorical transition sampling through arbitrary row-stochastic matrices;
 - categorical transition schedules and cumulative kernels;
 - time-indexed categorical forward diffusion with automatic or explicit
-  uniform noise.
+  uniform noise;
+- exact categorical posterior probabilities;
+- predicted-`x0` reverse probabilities and single-step categorical reverse
+  sampling.
 
 ## Categorical diffusion
 
@@ -68,12 +71,35 @@ stream. The explicit-noise form validates its noise at `t = 0` before returning
 ```wl
 schedule = makeUniformCategoricalSchedule[
   3,
-  {0.1, 0.2, 0.3, 0.4}
+  {0.1, 0.2, 0.3}
 ];
 
 xt = categoricalForwardDiffuseAt[
   x0,
   3,
+  schedule
+];
+
+posterior = categoricalPosterior[
+  1,
+  2,
+  2,
+  schedule
+];
+
+predictedX0 = {0.7, 0.2, 0.1};
+
+reverseProbabilities = categoricalReverseProbabilities[
+  2,
+  2,
+  predictedX0,
+  schedule
+];
+
+previousState = categoricalReverseStep[
+  2,
+  2,
+  predictedX0,
   schedule
 ];
 ```
