@@ -25,7 +25,7 @@ categoricalReverseStep::usage =
   "categoricalReverseStep[xt, t, predictedX0Probabilities, schedule] samples x_(t-1) from the predicted-x0 categorical reverse probabilities using the current random stream. categoricalReverseStep[xt, t, predictedX0Probabilities, schedule, uniformNoise] uses an explicit uniform variate in the half-open interval [0, 1) and is deterministic.";
 
 categoricalSample::usage =
-  "categoricalSample[predictor, initialState, schedule, opts] applies predictor[xt, t] from t = T down to 1 and samples x0 from the resulting predicted-x0 categorical reverse distributions. \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xT, ..., x0}|>. With \"UniformNoises\" -> Automatic, \"Seed\" -> Automatic uses the current random stream and an Integer seed is reproducible and locally isolated. An explicit length-T \"UniformNoises\" list is deterministic, indexed by logical time, and takes precedence over \"Seed\".";
+  "categoricalSample[predictor, initialState, schedule, opts] runs the full scalar categorical reverse process from caller-supplied initialState = xT through x_(T-1), ..., x0. It never generates a terminal prior. At each logical time t = T down to 1 it calls predictor[xt, t] for a length-K predicted-x0 probability vector and samples one categoricalReverseStep. \"Noises\" -> Automatic uses one current-stream uniform variate per step; an explicit length-T \"Noises\" list is deterministic, indexed by logical time so Noises[[t]] drives t to t - 1, and takes precedence over \"Seed\". \"Seed\" -> Automatic uses the caller stream; an Integer seed is reproducible and locally isolated. \"ReturnTrajectory\" -> True returns <|\"Sample\" -> x0, \"Trajectory\" -> {xT, ..., x0}, \"Timesteps\" -> {T, ..., 0}|>.";
 
 Begin["`Private`"]
 
@@ -590,9 +590,9 @@ categoricalReverseStep[___] := (
 );
 
 Options[categoricalSample] = {
-  "ReturnTrajectory" -> False,
   "Seed" -> Automatic,
-  "UniformNoises" -> Automatic
+  "Noises" -> Automatic,
+  "ReturnTrajectory" -> False
 };
 
 categoricalSample::state =
@@ -602,9 +602,9 @@ categoricalSample::schedule =
 categoricalSample::predictor =
   "The predictor must return a length-K list of finite, non-negative predicted x0 probabilities whose sum is numerically 1 at every time.";
 categoricalSample::opts =
-  "Options must use each of \"ReturnTrajectory\", \"Seed\", and \"UniformNoises\" at most once with valid values.";
+  "Options must use each of \"Seed\", \"Noises\", and \"ReturnTrajectory\" at most once with valid values.";
 categoricalSample::noises =
-  "Explicit \"UniformNoises\" must be a length-T list of finite real values in the half-open interval [0, 1), indexed by logical time.";
+  "Explicit \"Noises\" must be a length-T list of finite real values in the half-open interval [0, 1), indexed by logical time.";
 categoricalSample::args =
   "categoricalSample expects a predictor callable, an Integer initial state, a categorical schedule, and optional rules.";
 
@@ -613,10 +613,10 @@ runCategoricalSampling[
   initialState_,
   schedule_Association,
   returnTrajectory_,
-  uniformNoises_
+  noises_
 ] := Module[
   {
-    state, trajectory, predictedX0Probabilities, uniformNoise,
+    state, trajectory, predictedX0Probabilities, noise,
     categoryCount, t, failed
   },
   state = initialState;
@@ -635,9 +635,9 @@ runCategoricalSampling[
       failed = True;
       Break[]
     ];
-    uniformNoise = If[
-      ListQ[uniformNoises],
-      uniformNoises[[t]],
+    noise = If[
+      ListQ[noises],
+      noises[[t]],
       RandomReal[]
     ];
     state = categoricalReverseStep[
@@ -645,7 +645,7 @@ runCategoricalSampling[
       t,
       predictedX0Probabilities,
       schedule,
-      uniformNoise
+      noise
     ];
     If[state === $Failed,
       failed = True;
@@ -657,7 +657,11 @@ runCategoricalSampling[
   If[failed, Return[$Failed]];
   If[
     TrueQ[returnTrajectory],
-    <|"Sample" -> state, "Trajectory" -> trajectory|>,
+    <|
+      "Sample" -> state,
+      "Trajectory" -> trajectory,
+      "Timesteps" -> Append[Reverse[Range[schedule["Steps"]]], 0]
+    |>,
     state
   ]
 ];
@@ -669,7 +673,7 @@ categoricalSample[
   opts___
 ] := Module[
   {
-    given, keys, values, returnTrajectory, seed, uniformNoises,
+    given, keys, values, returnTrajectory, seed, noises,
     categoryCount
   },
   given = {opts};
@@ -681,7 +685,7 @@ categoricalSample[
   If[
     !AllTrue[
       keys,
-      MemberQ[{"ReturnTrajectory", "Seed", "UniformNoises"}, #] &
+      MemberQ[{"Seed", "Noises", "ReturnTrajectory"}, #] &
     ] || DuplicateFreeQ[keys] === False,
     Message[categoricalSample::opts];
     Return[$Failed]
@@ -689,7 +693,7 @@ categoricalSample[
   values = Join[Association[Options[categoricalSample]], Association[given]];
   returnTrajectory = values["ReturnTrajectory"];
   seed = values["Seed"];
-  uniformNoises = values["UniformNoises"];
+  noises = values["Noises"];
   If[
     !MemberQ[{True, False}, returnTrajectory] ||
       !(seed === Automatic || IntegerQ[seed]),
@@ -708,24 +712,24 @@ categoricalSample[
     Return[$Failed]
   ];
   If[
-    uniformNoises =!= Automatic &&
-      (!ListQ[uniformNoises] ||
-        Length[uniformNoises] =!= schedule["Steps"] ||
+    noises =!= Automatic &&
+      (!ListQ[noises] ||
+        Length[noises] =!= schedule["Steps"] ||
         !AllTrue[
-          uniformNoises,
+          noises,
           categoricalUniformNoiseQ[#, {}] &
         ]),
     Message[categoricalSample::noises];
     Return[$Failed]
   ];
   Which[
-    ListQ[uniformNoises],
+    ListQ[noises],
       runCategoricalSampling[
         predictor,
         initialState,
         schedule,
         returnTrajectory,
-        uniformNoises
+        noises
       ],
     IntegerQ[seed],
       BlockRandom[
@@ -770,7 +774,8 @@ runCategoricalTests[] := Module[
     predictedX0, reverseStepManual, reverseStepSamples, samplerSchedule,
     samplerPredictor, samplerUniforms, samplerExpected, samplerResult,
     samplerTimeTrace, samplerAutomatic1, samplerAutomatic2,
-    samplerSeeded1, samplerSeeded2
+    samplerSeeded1, samplerSeeded2, samplerDifferentSeed1,
+    samplerDifferentSeed2, samplerSeedSchedule
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -1279,20 +1284,24 @@ runCategoricalTests[] := Module[
       samplerPredictor,
       3,
       samplerSchedule,
-      "UniformNoises" -> samplerUniforms
+      "Noises" -> samplerUniforms
     ] === samplerExpected
   ];
   samplerResult = categoricalSample[
     samplerPredictor,
     3,
     samplerSchedule,
-    "UniformNoises" -> samplerUniforms,
+    "Noises" -> samplerUniforms,
     "ReturnTrajectory" -> True
   ];
   assert[
     "categorical sampler trajectory is ordered from xT through x0",
     Length[samplerResult["Trajectory"]] ===
         samplerSchedule["Steps"] + 1 &&
+      samplerResult["Timesteps"] ===
+        Append[Reverse[Range[samplerSchedule["Steps"]]], 0] &&
+      Length[samplerResult["Timesteps"]] ===
+        Length[samplerResult["Trajectory"]] &&
       First[samplerResult["Trajectory"]] === 3 &&
       Last[samplerResult["Trajectory"]] === samplerResult["Sample"] &&
       samplerResult["Sample"] === samplerExpected &&
@@ -1309,7 +1318,7 @@ runCategoricalTests[] := Module[
       ],
       3,
       samplerSchedule,
-      "UniformNoises" -> samplerUniforms
+      "Noises" -> samplerUniforms
     ]
   ][[2, 1]];
   assert[
@@ -1387,6 +1396,28 @@ runCategoricalTests[] := Module[
         RandomReal[]
       ] === BlockRandom[SeedRandom[9021]; RandomReal[]]
   ];
+  samplerSeedSchedule = makeUniformCategoricalSchedule[
+    2,
+    ConstantArray[1., 10]
+  ];
+  samplerDifferentSeed1 = categoricalSample[
+    Function[{state, time}, {0.5, 0.5}],
+    1,
+    samplerSeedSchedule,
+    "Seed" -> 1,
+    "ReturnTrajectory" -> True
+  ];
+  samplerDifferentSeed2 = categoricalSample[
+    Function[{state, time}, {0.5, 0.5}],
+    1,
+    samplerSeedSchedule,
+    "Seed" -> 999,
+    "ReturnTrajectory" -> True
+  ];
+  assert[
+    "different integer seeds distinguish a non-degenerate categorical process",
+    samplerDifferentSeed1 =!= samplerDifferentSeed2
+  ];
   assert[
     "explicit categorical uniforms take precedence and preserve the RNG",
     categoricalSample[
@@ -1394,14 +1425,14 @@ runCategoricalTests[] := Module[
       3,
       samplerSchedule,
       "Seed" -> 1,
-      "UniformNoises" -> samplerUniforms,
+      "Noises" -> samplerUniforms,
       "ReturnTrajectory" -> True
     ] === categoricalSample[
       samplerPredictor,
       3,
       samplerSchedule,
       "Seed" -> 999,
-      "UniformNoises" -> samplerUniforms,
+      "Noises" -> samplerUniforms,
       "ReturnTrajectory" -> True
     ] &&
       BlockRandom[
@@ -1410,7 +1441,7 @@ runCategoricalTests[] := Module[
           samplerPredictor,
           3,
           samplerSchedule,
-          "UniformNoises" -> samplerUniforms
+          "Noises" -> samplerUniforms
         ];
         RandomReal[]
       ] === BlockRandom[SeedRandom[9021]; RandomReal[]]
@@ -1421,19 +1452,37 @@ runCategoricalTests[] := Module[
       Function[{state, time}, {0.5, 0.5}],
       3,
       samplerSchedule,
-      "UniformNoises" -> samplerUniforms
+      "Noises" -> samplerUniforms
     ]] === $Failed &&
       Quiet[categoricalSample[
         Function[{state, time}, {0.5, -0.1, 0.6}],
         3,
         samplerSchedule,
-        "UniformNoises" -> samplerUniforms
+        "Noises" -> samplerUniforms
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        Function[{state, time}, {0.2, 0.2, 0.2}],
+        3,
+        samplerSchedule,
+        "Noises" -> samplerUniforms
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        Function[{state, time}, {Infinity, 0., 0.}],
+        3,
+        samplerSchedule,
+        "Noises" -> samplerUniforms
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        Function[{state, time}, 1.],
+        3,
+        samplerSchedule,
+        "Noises" -> samplerUniforms
       ]] === $Failed &&
       Quiet[categoricalSample[
         Function[{state, time}, $Failed],
         3,
         samplerSchedule,
-        "UniformNoises" -> samplerUniforms
+        "Noises" -> samplerUniforms
       ]] === $Failed
   ];
   assert[
@@ -1442,19 +1491,31 @@ runCategoricalTests[] := Module[
       samplerPredictor,
       3,
       samplerSchedule,
-      "UniformNoises" -> Most[samplerUniforms]
+      "Noises" -> Most[samplerUniforms]
     ]] === $Failed &&
       Quiet[categoricalSample[
         samplerPredictor,
         3,
         samplerSchedule,
-        "UniformNoises" -> {0.1, 0.2, 1., 0.4}
+        "Noises" -> {0.1, 0.2, 1., 0.4}
       ]] === $Failed &&
       Quiet[categoricalSample[
         samplerPredictor,
         3,
         samplerSchedule,
-        "UniformNoises" -> {0.1, 0.2, Infinity, 0.4}
+        "Noises" -> {0.1, 0.2, Infinity, 0.4}
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        3,
+        samplerSchedule,
+        "Noises" -> {0.1, 0.2, Indeterminate, 0.4}
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        3,
+        samplerSchedule,
+        "Noises" -> {0.1, 0.2, -0.1, 0.4}
       ]] === $Failed
   ];
   assert[
@@ -1464,6 +1525,11 @@ runCategoricalTests[] := Module[
       0,
       samplerSchedule
     ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        4,
+        samplerSchedule
+      ]] === $Failed &&
       Quiet[categoricalSample[
         samplerPredictor,
         3.,
@@ -1484,6 +1550,18 @@ runCategoricalTests[] := Module[
         samplerPredictor,
         3,
         samplerSchedule,
+        "ReturnTrajectory" -> 1
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        3,
+        samplerSchedule,
+        "Noises" -> 0.5
+      ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        3,
+        samplerSchedule,
         "Unknown" -> True
       ]] === $Failed &&
       Quiet[categoricalSample[
@@ -1493,7 +1571,23 @@ runCategoricalTests[] := Module[
         "Seed" -> 1,
         "Seed" -> 2
       ]] === $Failed &&
+      Quiet[categoricalSample[
+        samplerPredictor,
+        3,
+        samplerSchedule,
+        "Noises" -> samplerUniforms,
+        "Noises" -> samplerUniforms
+      ]] === $Failed &&
       Quiet[categoricalSample[samplerPredictor, 3]] === $Failed
+  ];
+  assert[
+    "categorical sampler propagates zero-support reverse failure",
+    Quiet[categoricalSample[
+      Function[{state, time}, {1., 0., 0.}],
+      2,
+      sparseSchedule,
+      "Noises" -> {0.5}
+    ]] === $Failed
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
