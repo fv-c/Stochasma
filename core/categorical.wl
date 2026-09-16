@@ -3,6 +3,9 @@ BeginPackage["Stochasma`"]
 uniformCategoricalTransitionKernel::usage =
   "uniformCategoricalTransitionKernel[categoryCount, beta] returns the row-stochastic transition matrix (1 - beta) I + beta U for uniform categorical corruption over categoryCount states, where U has every entry 1/categoryCount and 0 <= beta <= 1.";
 
+makeCategoricalSchedule::usage =
+  "makeCategoricalSchedule[{Q1, Q2, ..., QT}] validates one-step row-stochastic categorical transition matrices Q_t from logical time t - 1 to t and returns them together with cumulative row-vector transition matrices Qbar_t = Q1 . Q2 . ... . Qt for logical times 1 through T.";
+
 categoricalForwardDiffuse::usage =
   "categoricalForwardDiffuse[state, transitionKernel] samples a categorical state or array of states through a row-stochastic transition kernel. categoricalForwardDiffuse[state, transitionKernel, uniformNoise] uses explicit uniform variates in the half-open interval [0, 1) and is deterministic.";
 
@@ -72,6 +75,102 @@ categoricalTransitionKernelCategoryCount[kernel_] := Module[
   ];
   dimensions[[1]]
 ];
+
+categoricalNumericArraysCloseQ[
+  left_List,
+  right_List,
+  tolerance_ : 10^-10
+] := Quiet[Check[
+  Dimensions[left] === Dimensions[right] &&
+    Max[Abs[Flatten[N[left - right]]]] <= tolerance,
+  False
+]];
+
+categoricalScheduleQ[schedule_Association] := Module[
+  {
+    requiredKeys, steps, categoryCount, transitionKernels,
+    cumulativeTransitionKernels, expectedCumulative
+  },
+  requiredKeys = {
+    "Steps", "CategoryCount", "TransitionKernels",
+    "CumulativeTransitionKernels"
+  };
+  If[!AllTrue[requiredKeys, KeyExistsQ[schedule, #] &], Return[False]];
+  steps = schedule["Steps"];
+  categoryCount = schedule["CategoryCount"];
+  transitionKernels = schedule["TransitionKernels"];
+  cumulativeTransitionKernels = schedule["CumulativeTransitionKernels"];
+  If[
+    !IntegerQ[steps] || steps <= 0 ||
+      !IntegerQ[categoryCount] || categoryCount < 2 ||
+      !ListQ[transitionKernels] || Length[transitionKernels] =!= steps ||
+      !ListQ[cumulativeTransitionKernels] ||
+      Length[cumulativeTransitionKernels] =!= steps,
+    Return[False]
+  ];
+  If[
+    !AllTrue[
+      Join[transitionKernels, cumulativeTransitionKernels],
+      categoricalTransitionKernelCategoryCount[#] === categoryCount &
+    ],
+    Return[False]
+  ];
+  expectedCumulative = Rest@FoldList[
+    Dot,
+    N[IdentityMatrix[categoryCount]],
+    N[transitionKernels]
+  ];
+  categoricalNumericArraysCloseQ[
+    cumulativeTransitionKernels,
+    expectedCumulative
+  ]
+];
+
+categoricalScheduleQ[_] := False;
+
+makeCategoricalSchedule::kernels =
+  "Transition kernels must be a non-empty list of finite, non-negative, square numeric matrices of the same size K by K, with K at least 2 and every row summing numerically to 1.";
+makeCategoricalSchedule::numeric =
+  "The supplied transition kernels cannot produce a finite, internally consistent categorical schedule after numerical evaluation.";
+
+makeCategoricalSchedule[transitionKernels_List] := Module[
+  {categoryCounts, categoryCount, numericKernels, cumulativeKernels, schedule},
+  If[transitionKernels === {},
+    Message[makeCategoricalSchedule::kernels];
+    Return[$Failed]
+  ];
+  categoryCounts = categoricalTransitionKernelCategoryCount /@
+    transitionKernels;
+  If[
+    MemberQ[categoryCounts, $Failed] ||
+      !SameQ @@ categoryCounts,
+    Message[makeCategoricalSchedule::kernels];
+    Return[$Failed]
+  ];
+  categoryCount = First[categoryCounts];
+  numericKernels = N[transitionKernels];
+  cumulativeKernels = Rest@FoldList[
+    Dot,
+    N[IdentityMatrix[categoryCount]],
+    numericKernels
+  ];
+  schedule = <|
+    "Steps" -> Length[numericKernels],
+    "CategoryCount" -> categoryCount,
+    "TransitionKernels" -> numericKernels,
+    "CumulativeTransitionKernels" -> cumulativeKernels
+  |>;
+  If[!categoricalScheduleQ[schedule],
+    Message[makeCategoricalSchedule::numeric];
+    Return[$Failed]
+  ];
+  schedule
+];
+
+makeCategoricalSchedule[___] := (
+  Message[makeCategoricalSchedule::kernels];
+  $Failed
+);
 
 categoricalStateQ[state_, categoryCount_] := If[
   IntegerQ[state],
@@ -167,7 +266,7 @@ categoricalForwardDiffuse[___] := (
 runCategoricalTests[] := Module[
   {
     passed = 0, assert, kernel, expected, permutation, states,
-    randomSample, expectedNoise
+    randomSample, expectedNoise, q1, q2, q3, schedule
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -212,6 +311,65 @@ runCategoricalTests[] := Module[
       Quiet[uniformCategoricalTransitionKernel[3, 1.1]] === $Failed &&
       Quiet[uniformCategoricalTransitionKernel[3, Infinity]] === $Failed &&
       Quiet[uniformCategoricalTransitionKernel[3]] === $Failed
+  ];
+
+  q1 = {{0.9, 0.1}, {0.2, 0.8}};
+  q2 = {{0.6, 0.4}, {0.1, 0.9}};
+  q3 = {{0.7, 0.3}, {0.4, 0.6}};
+  schedule = makeCategoricalSchedule[{q1, q2, q3}];
+  assert[
+    "constructs the categorical schedule structure",
+    schedule["Steps"] === 3 &&
+      schedule["CategoryCount"] === 2 &&
+      Length[schedule["TransitionKernels"]] === 3 &&
+      Length[schedule["CumulativeTransitionKernels"]] === 3
+  ];
+  assert[
+    "uses ordered non-commutative cumulative products",
+    !categoricalNumericArraysCloseQ[q1 . q2, q2 . q1] &&
+      categoricalNumericArraysCloseQ[
+        schedule["CumulativeTransitionKernels"][[2]],
+        q1 . q2
+      ] &&
+      categoricalNumericArraysCloseQ[
+        schedule["CumulativeTransitionKernels"][[3]],
+        q1 . q2 . q3
+      ]
+  ];
+  assert[
+    "keeps every cumulative transition row-stochastic",
+    AllTrue[
+      schedule["CumulativeTransitionKernels"],
+      categoricalTransitionKernelCategoryCount[#] === 2 &
+    ]
+  ];
+  assert[
+    "validates the complete categorical schedule representation",
+    categoricalScheduleQ[schedule] &&
+      !categoricalScheduleQ[
+        ReplacePart[
+          schedule,
+          "CumulativeTransitionKernels" -> {q1, q2 . q1, q3 . q2 . q1}
+        ]
+      ] &&
+      !categoricalScheduleQ[KeyDrop[schedule, "CategoryCount"]]
+  ];
+  assert[
+    "rejects invalid categorical schedule inputs",
+    Quiet[makeCategoricalSchedule[{}]] === $Failed &&
+      Quiet[makeCategoricalSchedule[{{{1., 0., 0.}, {0., 1., 0.}}}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[{IdentityMatrix[2], IdentityMatrix[3]}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[{{{1.1, -0.1}, {0., 1.}}}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[{{{1., 0.}, {0., Infinity}}}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[{{{1., 0.}, {0., Indeterminate}}}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[{{{1., 0.}, {0.2, 0.7}}}]] ===
+        $Failed &&
+      Quiet[makeCategoricalSchedule[IdentityMatrix[2]]] === $Failed
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
