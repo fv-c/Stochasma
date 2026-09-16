@@ -18,6 +18,9 @@ categoricalForwardDiffuseAt::usage =
 categoricalPosterior::usage =
   "categoricalPosterior[x0, xt, t, schedule] returns the exact probability vector q(x_(t-1) | x_t, x_0) for scalar categorical states at logical time t.";
 
+categoricalReverseProbabilities::usage =
+  "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] marginalizes the exact categorical posterior over a model-predicted probability distribution on x_0 and returns p_theta(x_(t-1) | x_t).";
+
 Begin["`Private`"]
 
 categoricalFiniteRealNumberQ[value_] := Quiet[Check[
@@ -223,6 +226,16 @@ categoricalUniformNoiseQ[noise_, dimensions_] := If[
     Dimensions[noise] === dimensions &&
     AllTrue[Flatten[N[noise]], TrueQ[0 <= # < 1] &]
 ];
+
+categoricalProbabilityVectorQ[
+  probabilities_,
+  categoryCount_,
+  tolerance_ : 10^-12
+] := ListQ[probabilities] &&
+  Length[probabilities] === categoryCount &&
+  VectorQ[probabilities, categoricalFiniteRealNumberQ] &&
+  AllTrue[N[probabilities], TrueQ[# >= 0] &] &&
+  Abs[Total[N[probabilities]] - 1.] <= tolerance;
 
 categoricalSampleWithUniformNoise[state_, kernel_, noise_] := Module[
   {dimensions, states, uniforms, samples},
@@ -435,6 +448,82 @@ categoricalPosterior[___] := (
   $Failed
 );
 
+categoricalReverseProbabilities::args =
+  "categoricalReverseProbabilities expects an Integer scalar state xt, an Integer time, a length-K list of predicted x0 probabilities, and a categorical schedule.";
+categoricalReverseProbabilities::schedule =
+  "The supplied categorical schedule is malformed or internally inconsistent.";
+categoricalReverseProbabilities::time =
+  "Time t must be an Integer in the inclusive range 1 through `1`.";
+categoricalReverseProbabilities::xt =
+  "State xt must be an Integer between 1 and the categorical schedule's category count.";
+categoricalReverseProbabilities::probabilities =
+  "Predicted x0 probabilities must be a length-K list of finite, non-negative values whose sum is numerically 1.";
+categoricalReverseProbabilities::posterior =
+  "The reverse probabilities cannot be formed because a positive-weight exact posterior is undefined or the resulting vector is invalid.";
+
+categoricalReverseProbabilities[
+  xt_,
+  t_Integer,
+  predictedX0Probabilities_List,
+  schedule_Association
+] := Module[
+  {
+    categoryCount, numericPredicted, posteriors, reverseProbabilities
+  },
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalReverseProbabilities::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[categoricalReverseProbabilities::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  categoryCount = schedule["CategoryCount"];
+  If[!IntegerQ[xt] || !TrueQ[1 <= xt <= categoryCount],
+    Message[categoricalReverseProbabilities::xt];
+    Return[$Failed]
+  ];
+  If[
+    !categoricalProbabilityVectorQ[
+      predictedX0Probabilities,
+      categoryCount
+    ],
+    Message[categoricalReverseProbabilities::probabilities];
+    Return[$Failed]
+  ];
+  numericPredicted = N[predictedX0Probabilities];
+  posteriors = Table[
+    If[
+      TrueQ[numericPredicted[[i]] == 0],
+      ConstantArray[0., categoryCount],
+      categoricalPosterior[i, xt, t, schedule]
+    ],
+    {i, categoryCount}
+  ];
+  If[MemberQ[posteriors, $Failed],
+    Message[categoricalReverseProbabilities::posterior];
+    Return[$Failed]
+  ];
+  reverseProbabilities = Total[
+    MapThread[Times, {numericPredicted, posteriors}]
+  ];
+  If[
+    !categoricalProbabilityVectorQ[
+      reverseProbabilities,
+      categoryCount,
+      10^-10
+    ],
+    Message[categoricalReverseProbabilities::posterior];
+    Return[$Failed]
+  ];
+  reverseProbabilities
+];
+
+categoricalReverseProbabilities[___] := (
+  Message[categoricalReverseProbabilities::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runCategoricalTests[] := Module[
@@ -444,7 +533,9 @@ runCategoricalTests[] := Module[
     uniformSchedule, x0, noise, t, samples, expectedNext, actualNext,
     replay1, replay2, withinToleranceKernel, overToleranceKernel,
     toleranceSamples, posteriorQ1, posteriorQ2, posteriorQ3,
-    posteriorSchedule, posterior, manualUnnormalized, manualPosterior
+    posteriorSchedule, posterior, manualUnnormalized, manualPosterior,
+    reverseProbabilities, oneHotReverse, mixturePosterior1,
+    mixturePosterior3, manualReverseMixture
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -654,6 +745,120 @@ runCategoricalTests[] := Module[
       1,
       2,
       1,
+      makeCategoricalSchedule[{IdentityMatrix[3]}]
+    ]] === $Failed
+  ];
+
+  reverseProbabilities = categoricalReverseProbabilities[
+    3,
+    3,
+    {0.2, 0.5, 0.3},
+    posteriorSchedule
+  ];
+  assert[
+    "returns valid categorical reverse probabilities",
+    Length[reverseProbabilities] === 3 &&
+      Min[reverseProbabilities] >= 0 &&
+      Abs[Total[reverseProbabilities] - 1.] < 10^-14
+  ];
+  oneHotReverse = categoricalReverseProbabilities[
+    3,
+    3,
+    {0., 1., 0.},
+    posteriorSchedule
+  ];
+  assert[
+    "reduces a one-hot x0 prediction to the exact posterior",
+    categoricalNumericArraysCloseQ[
+      oneHotReverse,
+      categoricalPosterior[2, 3, 3, posteriorSchedule]
+    ]
+  ];
+  mixturePosterior1 =
+    ((posteriorQ1 . posteriorQ2)[[1]] posteriorQ3[[All, 3]]);
+  mixturePosterior1 = mixturePosterior1/Total[mixturePosterior1];
+  mixturePosterior3 =
+    ((posteriorQ1 . posteriorQ2)[[3]] posteriorQ3[[All, 3]]);
+  mixturePosterior3 = mixturePosterior3/Total[mixturePosterior3];
+  manualReverseMixture = 0.25 mixturePosterior1 + 0.75 mixturePosterior3;
+  assert[
+    "is linear in a two-state predicted x0 mixture",
+    categoricalNumericArraysCloseQ[
+      categoricalReverseProbabilities[
+        3,
+        3,
+        {0.25, 0., 0.75},
+        posteriorSchedule
+      ],
+      manualReverseMixture
+    ]
+  ];
+  assert[
+    "rejects invalid predicted x0 probability vectors",
+    Quiet[categoricalReverseProbabilities[
+      3,
+      3,
+      {0.5, 0.5},
+      posteriorSchedule
+    ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3,
+        {0.5, -0.1, 0.6},
+        posteriorSchedule
+      ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3,
+        {0.2, 0.2, 0.2},
+        posteriorSchedule
+      ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3,
+        {Infinity, 0., 0.},
+        posteriorSchedule
+      ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3,
+        1.,
+        posteriorSchedule
+      ]] === $Failed
+  ];
+  assert[
+    "rejects invalid reverse-probability state time and schedule inputs",
+    Quiet[categoricalReverseProbabilities[
+      0,
+      3,
+      {0.2, 0.5, 0.3},
+      posteriorSchedule
+    ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        0,
+        {0.2, 0.5, 0.3},
+        posteriorSchedule
+      ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3.0,
+        {0.2, 0.5, 0.3},
+        posteriorSchedule
+      ]] === $Failed &&
+      Quiet[categoricalReverseProbabilities[
+        3,
+        3,
+        {0.2, 0.5, 0.3},
+        KeyDrop[posteriorSchedule, "TransitionKernels"]
+      ]] === $Failed
+  ];
+  assert[
+    "rejects positive mass on an undefined exact posterior",
+    Quiet[categoricalReverseProbabilities[
+      2,
+      1,
+      {1., 0., 0.},
       makeCategoricalSchedule[{IdentityMatrix[3]}]
     ]] === $Failed
   ];
