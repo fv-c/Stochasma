@@ -19,7 +19,7 @@ categoricalPosterior::usage =
   "categoricalPosterior[x0, xt, t, schedule] returns the exact probability vector q(x_(t-1) | x_t, x_0) for scalar categorical states at logical time t.";
 
 categoricalReverseProbabilities::usage =
-  "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] marginalizes the exact categorical posterior over a model-predicted probability distribution on x_0 and returns p_theta(x_(t-1) | x_t).";
+  "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] constructs the canonical predicted-x0 categorical reverse distribution by combining the model-predicted clean-state probabilities with the cumulative and one-step transition kernels and normalizing once.";
 
 categoricalReverseStep::usage =
   "categoricalReverseStep[xt, t, predictedX0Probabilities, schedule] samples x_(t-1) from the predicted-x0 categorical reverse probabilities using the current random stream. categoricalReverseStep[xt, t, predictedX0Probabilities, schedule, uniformNoise] uses an explicit uniform variate in the half-open interval [0, 1) and is deterministic.";
@@ -465,7 +465,7 @@ categoricalReverseProbabilities::xt =
 categoricalReverseProbabilities::probabilities =
   "Predicted x0 probabilities must be a length-K list of finite, non-negative values whose sum is numerically 1.";
 categoricalReverseProbabilities::posterior =
-  "The reverse probabilities cannot be formed because a positive-weight exact posterior is undefined or the resulting vector is invalid.";
+  "The joint-marginalized reverse weights must be a finite, non-negative length-K vector with positive finite normalization.";
 
 categoricalReverseProbabilities[
   xt_,
@@ -474,7 +474,8 @@ categoricalReverseProbabilities[
   schedule_Association
 ] := Module[
   {
-    categoryCount, numericPredicted, posteriors, reverseProbabilities
+    categoryCount, numericPredicted, priorPrevious, likelihood,
+    unnormalized, normalization, reverseProbabilities
   },
   If[!categoricalScheduleQ[schedule],
     Message[categoricalReverseProbabilities::schedule];
@@ -498,21 +499,29 @@ categoricalReverseProbabilities[
     Return[$Failed]
   ];
   numericPredicted = N[predictedX0Probabilities];
-  posteriors = Table[
-    If[
-      TrueQ[numericPredicted[[i]] == 0],
-      ConstantArray[0., categoryCount],
-      categoricalPosterior[i, xt, t, schedule]
-    ],
-    {i, categoryCount}
+  priorPrevious = If[
+    t == 1,
+    numericPredicted,
+    numericPredicted .
+      schedule["CumulativeTransitionKernels"][[t - 1]]
   ];
-  If[MemberQ[posteriors, $Failed],
+  likelihood = schedule["TransitionKernels"][[t, All, xt]];
+  unnormalized = N[priorPrevious likelihood];
+  If[
+    !ListQ[unnormalized] || Length[unnormalized] =!= categoryCount ||
+      !VectorQ[unnormalized, categoricalFiniteRealNumberQ] ||
+      !AllTrue[unnormalized, TrueQ[# >= 0] &],
     Message[categoricalReverseProbabilities::posterior];
     Return[$Failed]
   ];
-  reverseProbabilities = Total[
-    MapThread[Times, {numericPredicted, posteriors}]
+  normalization = Total[unnormalized];
+  If[
+    !categoricalFiniteRealNumberQ[normalization] ||
+      !TrueQ[normalization > 0],
+    Message[categoricalReverseProbabilities::posterior];
+    Return[$Failed]
   ];
+  reverseProbabilities = N[unnormalized/normalization];
   If[
     !categoricalProbabilityVectorQ[
       reverseProbabilities,
@@ -587,9 +596,10 @@ runCategoricalTests[] := Module[
     replay1, replay2, withinToleranceKernel, overToleranceKernel,
     toleranceSamples, posteriorQ1, posteriorQ2, posteriorQ3,
     posteriorSchedule, posterior, manualUnnormalized, manualPosterior,
-    reverseProbabilities, oneHotReverse, mixturePosterior1,
-    mixturePosterior3, manualReverseMixture, reverseStepSchedule,
-    predictedX0, reverseStepSamples
+    reverseProbabilities, oneHotReverse, qbarPrevious, priorPrevious,
+    likelihood, manualReverse, pA, pB, lambda, unnormalizedA,
+    unnormalizedB, unnormalizedMix, sparseSchedule, reverseStepSchedule,
+    predictedX0, reverseStepManual, reverseStepSamples
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -809,9 +819,19 @@ runCategoricalTests[] := Module[
     {0.2, 0.5, 0.3},
     posteriorSchedule
   ];
+  qbarPrevious = posteriorQ1 . posteriorQ2;
+  priorPrevious = {0.2, 0.5, 0.3} . qbarPrevious;
+  likelihood = posteriorQ3[[All, 3]];
+  manualReverse = priorPrevious likelihood;
+  manualReverse = manualReverse/Total[manualReverse];
   assert[
-    "returns valid categorical reverse probabilities",
-    Length[reverseProbabilities] === 3 &&
+    "matches the canonical joint-marginalized reverse formula",
+    !categoricalNumericArraysCloseQ[
+      posteriorQ1 . posteriorQ2,
+      posteriorQ2 . posteriorQ1
+    ] &&
+      categoricalNumericArraysCloseQ[reverseProbabilities, manualReverse] &&
+      Length[reverseProbabilities] === 3 &&
       Min[reverseProbabilities] >= 0 &&
       Abs[Total[reverseProbabilities] - 1.] < 10^-14
   ];
@@ -828,24 +848,28 @@ runCategoricalTests[] := Module[
       categoricalPosterior[2, 3, 3, posteriorSchedule]
     ]
   ];
-  mixturePosterior1 =
-    ((posteriorQ1 . posteriorQ2)[[1]] posteriorQ3[[All, 3]]);
-  mixturePosterior1 = mixturePosterior1/Total[mixturePosterior1];
-  mixturePosterior3 =
-    ((posteriorQ1 . posteriorQ2)[[3]] posteriorQ3[[All, 3]]);
-  mixturePosterior3 = mixturePosterior3/Total[mixturePosterior3];
-  manualReverseMixture = 0.25 mixturePosterior1 + 0.75 mixturePosterior3;
+  pA = {1., 0., 0.};
+  pB = {0., 0., 1.};
+  lambda = 0.25;
+  unnormalizedA = (pA . qbarPrevious) likelihood;
+  unnormalizedB = (pB . qbarPrevious) likelihood;
+  unnormalizedMix =
+    ((lambda pA + (1. - lambda) pB) . qbarPrevious) likelihood;
   assert[
-    "is linear in a two-state predicted x0 mixture",
+    "is linear before the single final normalization",
     categoricalNumericArraysCloseQ[
-      categoricalReverseProbabilities[
-        3,
-        3,
-        {0.25, 0., 0.75},
-        posteriorSchedule
-      ],
-      manualReverseMixture
-    ]
+      unnormalizedMix,
+      lambda unnormalizedA + (1. - lambda) unnormalizedB
+    ] &&
+      categoricalNumericArraysCloseQ[
+        categoricalReverseProbabilities[
+          3,
+          3,
+          lambda pA + (1. - lambda) pB,
+          posteriorSchedule
+        ],
+        unnormalizedMix/Total[unnormalizedMix]
+      ]
   ];
   assert[
     "rejects invalid predicted x0 probability vectors",
@@ -907,20 +931,33 @@ runCategoricalTests[] := Module[
         KeyDrop[posteriorSchedule, "TransitionKernels"]
       ]] === $Failed
   ];
+  sparseSchedule = makeCategoricalSchedule[{IdentityMatrix[3]}];
   assert[
-    "rejects positive mass on an undefined exact posterior",
+    "allows incompatible predicted x0 candidates with zero joint weight",
+    categoricalReverseProbabilities[
+      2,
+      1,
+      {0.4, 0.6, 0.},
+      sparseSchedule
+    ] === {0., 1., 0.}
+  ];
+  assert[
+    "rejects reverse probabilities when all predicted mass is incompatible",
     Quiet[categoricalReverseProbabilities[
       2,
       1,
       {1., 0., 0.},
-      makeCategoricalSchedule[{IdentityMatrix[3]}]
+      sparseSchedule
     ]] === $Failed
   ];
 
   reverseStepSchedule = makeUniformCategoricalSchedule[3, {0.2}];
   predictedX0 = {0.2, 0.3, 0.5};
+  reverseStepManual =
+    predictedX0 reverseStepSchedule["TransitionKernels"][[1, All, 2]];
+  reverseStepManual = reverseStepManual/Total[reverseStepManual];
   assert[
-    "samples x0 from the predicted distribution at t = 1",
+    "uses the transition likelihood and correct quantiles at t = 1",
     categoricalNumericArraysCloseQ[
       categoricalReverseProbabilities[
         2,
@@ -928,7 +965,7 @@ runCategoricalTests[] := Module[
         predictedX0,
         reverseStepSchedule
       ],
-      predictedX0
+      reverseStepManual
     ] &&
       categoricalReverseStep[
         2,
@@ -937,6 +974,13 @@ runCategoricalTests[] := Module[
         reverseStepSchedule,
         0.
       ] === 1 &&
+      categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        0.5
+      ] === 2 &&
       categoricalReverseStep[
         2,
         1,
