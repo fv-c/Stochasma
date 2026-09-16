@@ -21,6 +21,9 @@ categoricalPosterior::usage =
 categoricalReverseProbabilities::usage =
   "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] marginalizes the exact categorical posterior over a model-predicted probability distribution on x_0 and returns p_theta(x_(t-1) | x_t).";
 
+categoricalReverseStep::usage =
+  "categoricalReverseStep[xt, t, predictedX0Probabilities, schedule] samples x_(t-1) from the predicted-x0 categorical reverse probabilities using the current random stream. categoricalReverseStep[xt, t, predictedX0Probabilities, schedule, uniformNoise] uses an explicit uniform variate in the half-open interval [0, 1) and is deterministic.";
+
 Begin["`Private`"]
 
 categoricalFiniteRealNumberQ[value_] := Quiet[Check[
@@ -237,6 +240,15 @@ categoricalProbabilityVectorQ[
   AllTrue[N[probabilities], TrueQ[# >= 0] &] &&
   Abs[Total[N[probabilities]] - 1.] <= tolerance;
 
+categoricalSampleProbabilityVector[probabilities_, uniformNoise_] := With[
+  {cumulative = Accumulate[N[probabilities]]},
+  First@FirstPosition[
+    cumulative,
+    threshold_ /; N[uniformNoise] < threshold,
+    {Length[cumulative]}
+  ]
+];
+
 categoricalSampleWithUniformNoise[state_, kernel_, noise_] := Module[
   {dimensions, states, uniforms, samples},
   dimensions = categoricalStateDimensions[state];
@@ -244,13 +256,7 @@ categoricalSampleWithUniformNoise[state_, kernel_, noise_] := Module[
   uniforms = Flatten[{noise}];
   samples = MapThread[
     Function[{category, uniform},
-      With[{cumulative = Accumulate[kernel[[category]]]},
-        First@FirstPosition[
-          cumulative,
-          threshold_ /; uniform < threshold,
-          {Length[cumulative]}
-        ]
-      ]
+      categoricalSampleProbabilityVector[kernel[[category]], uniform]
     ],
     {states, uniforms}
   ];
@@ -524,6 +530,53 @@ categoricalReverseProbabilities[___] := (
   $Failed
 );
 
+categoricalReverseStep::args =
+  "categoricalReverseStep expects an Integer scalar state xt, an Integer time, a length-K list of predicted x0 probabilities, a categorical schedule, and optionally one uniform noise value.";
+categoricalReverseStep::noise =
+  "Explicit uniform noise must be a finite real value in the half-open interval [0, 1).";
+
+categoricalReverseStep[
+  xt_,
+  t_Integer,
+  predictedX0Probabilities_List,
+  schedule_Association
+] := Module[{reverseProbabilities},
+  reverseProbabilities = categoricalReverseProbabilities[
+    xt,
+    t,
+    predictedX0Probabilities,
+    schedule
+  ];
+  If[reverseProbabilities === $Failed, Return[$Failed]];
+  categoricalSampleProbabilityVector[reverseProbabilities, RandomReal[]]
+];
+
+categoricalReverseStep[
+  xt_,
+  t_Integer,
+  predictedX0Probabilities_List,
+  schedule_Association,
+  uniformNoise_
+] := Module[{reverseProbabilities},
+  reverseProbabilities = categoricalReverseProbabilities[
+    xt,
+    t,
+    predictedX0Probabilities,
+    schedule
+  ];
+  If[reverseProbabilities === $Failed, Return[$Failed]];
+  If[!categoricalUniformNoiseQ[uniformNoise, {}],
+    Message[categoricalReverseStep::noise];
+    Return[$Failed]
+  ];
+  categoricalSampleProbabilityVector[reverseProbabilities, uniformNoise]
+];
+
+categoricalReverseStep[___] := (
+  Message[categoricalReverseStep::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runCategoricalTests[] := Module[
@@ -535,7 +588,8 @@ runCategoricalTests[] := Module[
     toleranceSamples, posteriorQ1, posteriorQ2, posteriorQ3,
     posteriorSchedule, posterior, manualUnnormalized, manualPosterior,
     reverseProbabilities, oneHotReverse, mixturePosterior1,
-    mixturePosterior3, manualReverseMixture
+    mixturePosterior3, manualReverseMixture, reverseStepSchedule,
+    predictedX0, reverseStepSamples
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -861,6 +915,123 @@ runCategoricalTests[] := Module[
       {1., 0., 0.},
       makeCategoricalSchedule[{IdentityMatrix[3]}]
     ]] === $Failed
+  ];
+
+  reverseStepSchedule = makeUniformCategoricalSchedule[3, {0.2}];
+  predictedX0 = {0.2, 0.3, 0.5};
+  assert[
+    "samples x0 from the predicted distribution at t = 1",
+    categoricalNumericArraysCloseQ[
+      categoricalReverseProbabilities[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule
+      ],
+      predictedX0
+    ] &&
+      categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        0.
+      ] === 1 &&
+      categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        1. - 10^-12
+      ] === 3
+  ];
+  reverseStepSamples = BlockRandom[
+    SeedRandom[9127];
+    {
+      categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule],
+      categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule]
+    }
+  ];
+  assert[
+    "automatic reverse steps return valid categories and consume RNG",
+    AllTrue[reverseStepSamples, IntegerQ[#] && 1 <= # <= 3 &] &&
+      (expectedNext = BlockRandom[
+        SeedRandom[9127];
+        RandomReal[];
+        RandomReal[];
+        RandomReal[]
+      ];
+      actualNext = BlockRandom[
+        SeedRandom[9127];
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule];
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule];
+        RandomReal[]
+      ];
+      actualNext === expectedNext)
+  ];
+  assert[
+    "resetting the external seed reproduces reverse-step samples",
+    (replay1 = BlockRandom[
+      SeedRandom[2269];
+      {
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule],
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule]
+      }
+    ];
+    replay2 = BlockRandom[
+      SeedRandom[2269];
+      {
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule],
+        categoricalReverseStep[2, 1, predictedX0, reverseStepSchedule]
+      }
+    ];
+    replay1 === replay2)
+  ];
+  assert[
+    "explicit reverse-step noise does not consult the random stream",
+    BlockRandom[
+      SeedRandom[2269];
+      categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        0.5
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[2269]; RandomReal[]]
+  ];
+  assert[
+    "rejects invalid reverse-step noise and arity",
+    Quiet[categoricalReverseStep[
+      2,
+      1,
+      predictedX0,
+      reverseStepSchedule,
+      -0.1
+    ]] === $Failed &&
+      Quiet[categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        1.
+      ]] === $Failed &&
+      Quiet[categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        Infinity
+      ]] === $Failed &&
+      Quiet[categoricalReverseStep[
+        2,
+        1,
+        predictedX0,
+        reverseStepSchedule,
+        {0.5}
+      ]] === $Failed &&
+      Quiet[categoricalReverseStep[2, 1, predictedX0]] === $Failed
   ];
 
   kernel = uniformCategoricalTransitionKernel[3, 0.6];
