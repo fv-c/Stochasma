@@ -13,7 +13,10 @@ runConditioningTests[] := Module[
     scaleOneCalls, baseConditionedPredictor, opaqueUnconditioned,
     opaqueConditioned, randomUnconditioned, randomConditionedPredictor,
     directGuidedRandom, wrappedGuidedRandom, conditionalCalls,
-    unconditionalCalls
+    unconditionalCalls, ddimNoises, actualDDIM, expectedDDIM,
+    categoricalSchedule, categoricalNoises,
+    categoricalConditionedPredictor, categoricalGuidedPredictor,
+    actualCategorical, expectedCategorical
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -547,6 +550,78 @@ runConditioningTests[] := Module[
           "extra"
         ]
       ] === $Failed
+  ];
+
+  currentFunction = "regression";
+  baseConditionedPredictor =
+    Function[{state, logicalTime, suppliedConditioning},
+      suppliedConditioning state
+    ];
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    makeConditionedPredictor[baseConditionedPredictor, 0.],
+    makeConditionedPredictor[baseConditionedPredictor, 0.1],
+    2.
+  ];
+  ddimNoises = ConstantArray[0. sample, 2];
+  actualDDIM = ddimSample[
+    guidedPredictor,
+    sample,
+    schedule,
+    "Eta" -> 0.,
+    "Timesteps" -> {3, 1},
+    "Noises" -> ddimNoises
+  ];
+  expectedDDIM = ddimSample[
+    Function[{state, logicalTime}, 0.2 state],
+    sample,
+    schedule,
+    "Eta" -> 0.,
+    "Timesteps" -> {3, 1},
+    "Noises" -> ddimNoises
+  ];
+  assert[
+    "condition binding and guidance preserve DDIM sampler semantics",
+    Max[Abs[actualDDIM - expectedDDIM]] < 10^-12
+  ];
+
+  categoricalSchedule = makeUniformCategoricalSchedule[
+    3,
+    {0.1, 0.2}
+  ];
+  categoricalNoises = {0.2, 0.1};
+  categoricalConditionedPredictor =
+    Function[{state, logicalTime, suppliedConditioning},
+      suppliedConditioning
+    ];
+  categoricalGuidedPredictor = makeClassifierFreeGuidedPredictor[
+    makeConditionedPredictor[
+      categoricalConditionedPredictor,
+      {0.2, 0.3, 0.5}
+    ],
+    makeConditionedPredictor[
+      categoricalConditionedPredictor,
+      {0.6, 0.3, 0.1}
+    ],
+    0.5
+  ];
+  actualCategorical = categoricalSample[
+    categoricalGuidedPredictor,
+    2,
+    categoricalSchedule,
+    "Noises" -> categoricalNoises,
+    "ReturnTrajectory" -> True
+  ];
+  expectedCategorical = categoricalSample[
+    Function[{state, logicalTime}, {0.4, 0.3, 0.3}],
+    2,
+    categoricalSchedule,
+    "Noises" -> categoricalNoises,
+    "ReturnTrajectory" -> True
+  ];
+  assert[
+    "generic guidance composes with categorical probability consumers",
+    actualCategorical === expectedCategorical &&
+      expectedCategorical["Trajectory"] === {2, 2, 1}
   ];
 
   Print["✓ conditioning — ", passed, " tests passed"];

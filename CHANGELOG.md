@@ -12,6 +12,8 @@
   stable two-branch evaluation contract.
 - Add conditioning-aware diffusion training batches with aligned opaque values
   and unchanged base-batch randomness.
+- Add conditioning regressions for DDPM, DDIM, categorical sampling, training
+  randomness, and clean public-API loading.
 
 ## 0.4.0 — 2026-09-17
 

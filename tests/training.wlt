@@ -9,7 +9,7 @@ runTrainingTests[] := Module[
     conditioningValues, conditionedBatch, expectedConditionedBatch,
     opaqueConditioning, opaqueSamples, opaqueTimes, opaqueNoises,
     opaqueBatch, seededBase, seededConditioned, wrapperRun, baseRun,
-    mismatchNext
+    mismatchRun
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -406,20 +406,22 @@ runTrainingTests[] := Module[
   ];
 
   expectedNext = BlockRandom[SeedRandom[271828]; RandomReal[]];
-  mismatchNext = BlockRandom[
+  mismatchRun = BlockRandom[
     SeedRandom[271828];
-    Quiet[
-      makeConditionedDiffusionTrainingBatch[
-        cleanSamples,
-        {First[conditioningValues]},
-        schedule
-      ]
-    ];
-    RandomReal[]
+    {
+      Quiet[
+        makeConditionedDiffusionTrainingBatch[
+          cleanSamples,
+          {First[conditioningValues]},
+          schedule
+        ]
+      ],
+      RandomReal[]
+    }
   ];
   assert[
     "rejects misaligned conditioning before consuming randomness",
-    mismatchNext === expectedNext
+    First[mismatchRun] === $Failed && Last[mismatchRun] === expectedNext
   ];
   assert[
     "propagates base batch validation failures",

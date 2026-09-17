@@ -37,7 +37,7 @@ to the v0.1 implementation. Checked items are implemented.
 - [x] conditioned predictor composition;
 - [x] classifier-free guidance primitives;
 - [x] conditioning-aware training utilities;
-- [ ] conditioning regression tests.
+- [x] conditioning regression tests.
 
 ## Future adapters
 
