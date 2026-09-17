@@ -1,8 +1,12 @@
 Begin["Stochasma`Private`"]
 
+conditioningTestRepoRoot =
+  DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
+
 runConditioningTests[] := Module[
   {
     passed = 0, assert, currentFunction = "makeConditionedPredictor",
+    minimalLoadCode, minimalLoadResult, minimalLoadOutput,
     calls = 0, received, condition,
     conditionedPredictor, predictor, secondPredictor, sample, time, result,
     representations, failingPredictor, randomConditioned, boundRandom,
@@ -16,12 +20,55 @@ runConditioningTests[] := Module[
     unconditionalCalls, ddimNoises, actualDDIM, expectedDDIM,
     categoricalSchedule, categoricalNoises,
     categoricalConditionedPredictor, categoricalGuidedPredictor,
-    actualCategorical, expectedCategorical
+    actualCategorical, expectedCategorical,
+    invalidUnconditionedPrediction, invalidConditionedPrediction,
+    invalidGuidedPrediction, invalidCategoricalGuidedPredictor
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ conditioning/", currentFunction, ": ", label];
     Quit[1]
+  ];
+
+  minimalLoadCode = StringRiffle[
+    {
+      "repoRoot = " <>
+        ToString[conditioningTestRepoRoot, InputForm] <> ";",
+      "Get[FileNameJoin[{repoRoot, \"core\", \"validation.wl\"}]];",
+      "Get[FileNameJoin[{repoRoot, \"models\", \"conditioning.wl\"}]];",
+      "conditioned = Stochasma`makeConditionedPredictor[Function[{state, logicalTime, suppliedConditioning}, state + logicalTime + suppliedConditioning], 4];",
+      "guided = Stochasma`classifierFreeGuidance[{0., 1.}, {2., 3.}, 0.5];",
+      "guidedPredictor = Stochasma`makeClassifierFreeGuidedPredictor[Function[{state, logicalTime}, {0.2, 0.8}], Function[{state, logicalTime}, {0.6, 0.4}], 0.5];",
+      "validationQ = DownValues[Stochasma`Private`finiteRealNumberQ] =!= {};",
+      "forwardAbsentQ = Names[\"Stochasma`forwardDiffuse\"] === {};",
+      "conditionedQ = conditioned[2, 3] === 9;",
+      "guidedQ = Max[Abs[guided - {1., 2.}]] < 10^-12;",
+      "guidedPredictorQ = Max[Abs[guidedPredictor[1, 1] - {0.4, 0.6}]] < 10^-12;",
+      "Print[\"VALIDATION=\", validationQ];",
+      "Print[\"FORWARD_ABSENT=\", forwardAbsentQ];",
+      "Print[\"CONDITIONED=\", conditionedQ];",
+      "Print[\"GUIDANCE=\", guidedQ && guidedPredictorQ];",
+      "Exit[If[And @@ {validationQ, forwardAbsentQ, conditionedQ, guidedQ, guidedPredictorQ}, 0, 1]];"
+    },
+    " "
+  ];
+  minimalLoadResult = RunProcess[
+    {"wolframscript", "-code", minimalLoadCode},
+    All
+  ];
+  minimalLoadOutput = StringJoin[
+    Lookup[minimalLoadResult, "StandardOutput", ""],
+    "\n",
+    Lookup[minimalLoadResult, "StandardError", ""]
+  ];
+  If[minimalLoadResult["ExitCode"] =!= 0, Print[minimalLoadOutput]];
+  assert[
+    "loads validation and conditioning without the forward process",
+    minimalLoadResult["ExitCode"] === 0 &&
+      StringContainsQ[minimalLoadOutput, "VALIDATION=True"] &&
+      StringContainsQ[minimalLoadOutput, "FORWARD_ABSENT=True"] &&
+      StringContainsQ[minimalLoadOutput, "CONDITIONED=True"] &&
+      StringContainsQ[minimalLoadOutput, "GUIDANCE=True"]
   ];
 
   sample = {0.5, -1., 1.5};
@@ -604,6 +651,7 @@ runConditioningTests[] := Module[
     ],
     0.5
   ];
+  guidedPrediction = categoricalGuidedPredictor[2, 2];
   actualCategorical = categoricalSample[
     categoricalGuidedPredictor,
     2,
@@ -620,8 +668,48 @@ runConditioningTests[] := Module[
   ];
   assert[
     "generic guidance composes with categorical probability consumers",
-    actualCategorical === expectedCategorical &&
+    Max[Abs[guidedPrediction - {0.4, 0.3, 0.3}]] < 10^-12 &&
+      Min[guidedPrediction] >= 0 &&
+      Max[guidedPrediction] <= 1 &&
+      Abs[Total[guidedPrediction] - 1.] < 10^-12 &&
+      actualCategorical === expectedCategorical &&
       expectedCategorical["Trajectory"] === {2, 2, 1}
+  ];
+
+  invalidUnconditionedPrediction = {0.8, 0.1, 0.1};
+  invalidConditionedPrediction = {0.1, 0.8, 0.1};
+  invalidGuidedPrediction = classifierFreeGuidance[
+    invalidUnconditionedPrediction,
+    invalidConditionedPrediction,
+    2.
+  ];
+  invalidCategoricalGuidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, invalidUnconditionedPrediction],
+    Function[{state, logicalTime}, invalidConditionedPrediction],
+    2.
+  ];
+  assert[
+    "leaves extrapolated categorical guidance unchanged for the sampler to reject",
+    Max[
+      Abs[invalidGuidedPrediction - {-0.6, 1.5, 0.1}]
+    ] < 10^-12 &&
+      Min[invalidGuidedPrediction] < 0 &&
+      Max[invalidGuidedPrediction] > 1 &&
+      Max[
+        Abs[
+          invalidCategoricalGuidedPredictor[2, 2] -
+            invalidGuidedPrediction
+        ]
+      ] < 10^-12 &&
+      Quiet[
+        categoricalSample[
+          invalidCategoricalGuidedPredictor,
+          2,
+          categoricalSchedule,
+          "Noises" -> categoricalNoises
+        ],
+        categoricalSample::predictor
+      ] === $Failed
   ];
 
   Print["✓ conditioning — ", passed, " tests passed"];

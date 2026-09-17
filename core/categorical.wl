@@ -1,3 +1,8 @@
+If[
+  DownValues[Stochasma`Private`finiteRealNumberQ] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "validation.wl"}]]
+];
+
 BeginPackage["Stochasma`"]
 
 uniformCategoricalTransitionKernel::usage =
@@ -29,13 +34,6 @@ categoricalSample::usage =
 
 Begin["`Private`"]
 
-categoricalFiniteRealNumberQ[value_] := Quiet[Check[
-  NumberQ[N[value]] &&
-    TrueQ[Im[N[value]] == 0] &&
-    FreeQ[N[value], Indeterminate | ComplexInfinity | DirectedInfinity],
-  False
-]];
-
 uniformCategoricalTransitionKernel::args =
   "uniformCategoricalTransitionKernel expects an Integer category count of at least 2 and a finite real beta value.";
 uniformCategoricalTransitionKernel::range =
@@ -45,7 +43,7 @@ uniformCategoricalTransitionKernel[categoryCount_, beta_] := Module[
   {numericBeta, uniformKernel},
   If[
     !IntegerQ[categoryCount] || categoryCount < 2 ||
-      !categoricalFiniteRealNumberQ[beta],
+      !finiteRealNumberQ[beta],
     Message[uniformCategoricalTransitionKernel::args];
     Return[$Failed]
   ];
@@ -78,7 +76,7 @@ categoricalForwardDiffuse::noise =
 
 categoricalTransitionKernelCategoryCount[kernel_] := Module[
   {dimensions, numericKernel},
-  If[!MatrixQ[kernel, categoricalFiniteRealNumberQ], Return[$Failed]];
+  If[!MatrixQ[kernel, finiteRealNumberQ], Return[$Failed]];
   dimensions = Dimensions[kernel];
   If[
     Length[dimensions] != 2 || dimensions[[1]] < 2 ||
@@ -198,7 +196,7 @@ makeUniformCategoricalSchedule::range =
 makeUniformCategoricalSchedule[categoryCount_, betas_List] := Module[{},
   If[
     !IntegerQ[categoryCount] || categoryCount < 2 || betas === {} ||
-      !AllTrue[betas, categoricalFiniteRealNumberQ],
+      !AllTrue[betas, finiteRealNumberQ],
     Message[makeUniformCategoricalSchedule::args];
     Return[$Failed]
   ];
@@ -227,8 +225,8 @@ categoricalStateDimensions[state_] := If[IntegerQ[state], {}, Dimensions[state]]
 
 categoricalUniformNoiseQ[noise_, dimensions_] := If[
   dimensions === {},
-  categoricalFiniteRealNumberQ[noise] && TrueQ[0 <= N[noise] < 1],
-  ArrayQ[noise, Length[dimensions], categoricalFiniteRealNumberQ] &&
+  finiteRealNumberQ[noise] && TrueQ[0 <= N[noise] < 1],
+  ArrayQ[noise, Length[dimensions], finiteRealNumberQ] &&
     Dimensions[noise] === dimensions &&
     AllTrue[Flatten[N[noise]], TrueQ[0 <= # < 1] &]
 ];
@@ -239,7 +237,7 @@ categoricalProbabilityVectorQ[
   tolerance_ : 10^-12
 ] := ListQ[probabilities] &&
   Length[probabilities] === categoryCount &&
-  VectorQ[probabilities, categoricalFiniteRealNumberQ] &&
+  VectorQ[probabilities, finiteRealNumberQ] &&
   AllTrue[N[probabilities], TrueQ[# >= 0] &] &&
   Abs[Total[N[probabilities]] - 1.] <= tolerance;
 
@@ -405,26 +403,26 @@ normalizeCategoricalWeights[weights_] := Module[
   {numericWeights, scale, scaledWeights, normalization, probabilities},
   If[
     !ListQ[weights] || weights === {} ||
-      !VectorQ[weights, categoricalFiniteRealNumberQ],
+      !VectorQ[weights, finiteRealNumberQ],
     Return[$Failed]
   ];
   numericWeights = N[weights];
   If[!AllTrue[numericWeights, TrueQ[# >= 0] &], Return[$Failed]];
   scale = Max[numericWeights];
   If[
-    !categoricalFiniteRealNumberQ[scale] || !TrueQ[scale > 0],
+    !finiteRealNumberQ[scale] || !TrueQ[scale > 0],
     Return[$Failed]
   ];
   scaledWeights = numericWeights/scale;
   normalization = Total[scaledWeights];
   If[
-    !categoricalFiniteRealNumberQ[normalization] ||
+    !finiteRealNumberQ[normalization] ||
       !TrueQ[normalization > 0],
     Return[$Failed]
   ];
   probabilities = N[scaledWeights/normalization];
   If[
-    !VectorQ[probabilities, categoricalFiniteRealNumberQ] ||
+    !VectorQ[probabilities, finiteRealNumberQ] ||
       !AllTrue[probabilities, TrueQ[# >= 0] &],
     $Failed,
     probabilities

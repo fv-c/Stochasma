@@ -1,6 +1,14 @@
 If[
-  DownValues[Stochasma`forwardDiffuse] === {},
-  Get[FileNameJoin[{DirectoryName[$InputFileName], "forward.wl"}]]
+  DownValues[Stochasma`Private`finiteRealNumberQ] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "validation.wl"}]]
+];
+If[
+  DownValues[Stochasma`Private`randomNormalLike] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "randomness.wl"}]]
+];
+If[
+  DownValues[Stochasma`makeDiffusionSchedule] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "schedules.wl"}]]
 ];
 
 BeginPackage["Stochasma`"]

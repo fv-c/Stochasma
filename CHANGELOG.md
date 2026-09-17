@@ -14,6 +14,12 @@
   and unchanged base-batch randomness.
 - Add conditioning regressions for DDPM, DDIM, categorical sampling, training
   randomness, and clean public-API loading.
+- Centralize shared private finite-real and sample-shape validation, decoupling
+  generic conditioning and Gaussian reverse diffusion from forward diffusion.
+- Make the categorical classifier-free-guidance boundary explicit and
+  regression-tested: valid guided probability vectors are accepted, while
+  out-of-simplex outputs remain unchanged and are rejected by categorical
+  sampling validation.
 
 ## 0.4.0 — 2026-09-17
 

@@ -36,6 +36,12 @@ Dependencies point downward only where mathematically required. The predictor
 is supplied externally through the callable protocol `predictor[xt, t]` and is
 not part of the deterministic DDPM core.
 
+Shared private finite-real and sample-shape validation is loaded before its
+consumers. Gaussian process modules and `models/conditioning.wl` depend on this
+validation layer; conditioning does not depend on `core/forward.wl` or on the
+Gaussian forward process. Shape-preserving Gaussian random generation is a
+separate private dependency rather than part of numeric validation.
+
 The DDPM sampler traverses `T, T-1, ..., 1` and produces `x0`. When requested,
 its trajectory is ordered `{xT, x(T-1), ..., x0}`. Explicit DDPM reverse noises
 use a length-`T` list indexed by logical time; the `t = 1` entry is not added
@@ -97,9 +103,12 @@ unconditioned + guidanceScale (conditioned - unconditioned).
 ```
 
 The scale must be a finite non-negative real scalar. The arithmetic primitive
-preserves shape but does not impose consumer-specific constraints such as
-categorical probability normalization; the eventual public consumer still
-validates the guided prediction.
+is representation-neutral and preserves shape. For a categorical consumer,
+its result is admissible only when it remains a valid probability vector.
+Extrapolative scales can move the result outside the probability simplex.
+Stochasma does not clip, apply Softmax, renormalize, or project guided outputs;
+the categorical consumer rejects invalid vectors at its existing validation
+boundary.
 
 `makeClassifierFreeGuidedPredictor` composes independent unconditioned and
 conditioned two-argument predictors. Each call evaluates the unconditioned
@@ -258,6 +267,8 @@ categorical transition at `t = 1` remains stochastic in general.
 ## Module map
 
 ```text
+core/validation.wl  shared private finite-real and sample-shape validation helpers
+core/randomness.wl  shared private shape-preserving Gaussian random generation
 core/schedules.wl   noise schedules and derived DDPM coefficients
 core/forward.wl     forward process q(x_t | x_0)
 core/reverse.wl     clean reconstruction, posterior, and reverse step

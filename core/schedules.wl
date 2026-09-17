@@ -1,3 +1,8 @@
+If[
+  DownValues[Stochasma`Private`finiteRealNumberQ] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "validation.wl"}]]
+];
+
 BeginPackage["Stochasma`"]
 
 linearBetaSchedule::usage =
@@ -10,13 +15,6 @@ makeDiffusionSchedule::usage =
   "makeDiffusionSchedule[betas] validates beta values for logical times 1 through T and returns an Association containing the canonical Gaussian DDPM coefficients.";
 
 Begin["`Private`"]
-
-finiteRealNumberQ[value_] := Quiet[Check[
-  NumberQ[N[value]] &&
-    TrueQ[Im[N[value]] == 0] &&
-    FreeQ[N[value], Indeterminate | ComplexInfinity | DirectedInfinity],
-  False
-]];
 
 numericListsCloseQ[left_List, right_List, tolerance_ : 10^-10] := Quiet[Check[
   Dimensions[left] === Dimensions[right] &&

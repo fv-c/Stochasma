@@ -77,6 +77,11 @@ guidedPrediction = classifierFreeGuidance[
 It accepts same-shape finite real scalars or arrays and a finite non-negative
 real scale. The operation preserves shape but does not normalize or clip its
 result; a downstream consumer still applies its own output constraints.
+For categorical consumers, the guided result is usable only when it remains a
+valid probability vector. Extrapolative scales can move the result outside the
+probability simplex. Stochasma does not clip, apply Softmax, renormalize, or
+project classifier-free-guidance outputs; categorical samplers reject invalid
+vectors through their existing predicted-`x0` probability validation.
 
 Build a sampler-ready guided predictor by composing two independently bound
 conditions:

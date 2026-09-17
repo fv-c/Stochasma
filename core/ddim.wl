@@ -2,10 +2,6 @@ If[
   DownValues[Stochasma`predictCleanSample] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "reverse.wl"}]]
 ];
-If[
-  DownValues[Stochasma`ddpmSample] === {},
-  Get[FileNameJoin[{DirectoryName[$InputFileName], "sampling.wl"}]]
-];
 
 BeginPackage["Stochasma`"]
 

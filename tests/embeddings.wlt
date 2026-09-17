@@ -15,19 +15,19 @@ runEmbeddingsTests[] := Module[
   assert[
     "two-dimensional time-zero embedding has the requested finite values",
     embeddingAtZero2 === {1., 0.} &&
-      AllTrue[embeddingAtZero2, finiteRealTimeQ]
+      AllTrue[embeddingAtZero2, finiteRealNumberQ]
   ];
   embeddingAtZero6 = sinusoidalTimeEmbedding[0, 6];
   assert[
     "six-dimensional time-zero embedding has the requested dimensions",
     Dimensions[embeddingAtZero6] === {6} &&
-      AllTrue[embeddingAtZero6, finiteRealTimeQ]
+      AllTrue[embeddingAtZero6, finiteRealNumberQ]
   ];
   embeddingAtThree6 = sinusoidalTimeEmbedding[3, 6];
   assert[
     "nonzero-time embedding has the requested finite dimensions",
     Dimensions[embeddingAtThree6] === {6} &&
-      AllTrue[embeddingAtThree6, finiteRealTimeQ]
+      AllTrue[embeddingAtThree6, finiteRealNumberQ]
   ];
   assert[
     "evaluation is deterministic",

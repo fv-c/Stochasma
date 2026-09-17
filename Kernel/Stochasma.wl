@@ -3,6 +3,8 @@ With[
   Scan[
     Get,
     FileNameJoin[{root, #}] & /@ {
+      "core/validation.wl",
+      "core/randomness.wl",
       "core/schedules.wl",
       "core/forward.wl",
       "core/reverse.wl",

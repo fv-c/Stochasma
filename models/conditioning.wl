@@ -1,8 +1,8 @@
 If[
-  DownValues[Stochasma`forwardDiffuse] === {},
+  DownValues[Stochasma`Private`finiteRealNumberQ] === {},
   Get[
     FileNameJoin[{
-      DirectoryName[$InputFileName], "..", "core", "forward.wl"
+      DirectoryName[$InputFileName], "..", "core", "validation.wl"
     }]
   ]
 ];

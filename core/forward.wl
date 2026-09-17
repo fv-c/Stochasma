@@ -2,6 +2,10 @@ If[
   DownValues[Stochasma`makeDiffusionSchedule] === {},
   Get[FileNameJoin[{DirectoryName[$InputFileName], "schedules.wl"}]]
 ];
+If[
+  DownValues[Stochasma`Private`randomNormalLike] === {},
+  Get[FileNameJoin[{DirectoryName[$InputFileName], "randomness.wl"}]]
+];
 
 BeginPackage["Stochasma`"]
 
@@ -9,22 +13,6 @@ forwardDiffuse::usage =
   "forwardDiffuse[x0, t, schedule] samples q(x_t | x_0) for logical time t using the current random stream, while forwardDiffuse[x0, t, schedule, noise] uses explicit same-shape Gaussian noise deterministically. At t = 0 both forms return x0 exactly without generating noise.";
 
 Begin["`Private`"]
-
-realNumericSampleQ[value_] := finiteRealNumberQ[value] ||
-  (ArrayQ[value, _, finiteRealNumberQ] && Flatten[value] =!= {});
-
-sameSampleShapeQ[left_, right_] :=
-  realNumericSampleQ[left] && realNumericSampleQ[right] &&
-    Dimensions[left] === Dimensions[right];
-
-randomNormalLike[sample_] := If[
-  ArrayQ[sample],
-  ArrayReshape[
-    RandomVariate[NormalDistribution[0, 1], Times @@ Dimensions[sample]],
-    Dimensions[sample]
-  ],
-  RandomVariate[NormalDistribution[0, 1]]
-];
 
 forwardDiffuse::sample =
   "The clean sample must be a finite real numeric scalar or non-empty array.";

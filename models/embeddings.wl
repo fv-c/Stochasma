@@ -1,16 +1,18 @@
+If[
+  DownValues[Stochasma`Private`finiteRealNumberQ] === {},
+  Get[
+    FileNameJoin[{
+      DirectoryName[$InputFileName], "..", "core", "validation.wl"
+    }]
+  ]
+];
+
 BeginPackage["Stochasma`"]
 
 sinusoidalTimeEmbedding::usage =
   "sinusoidalTimeEmbedding[time, dimensions, opts] returns a deterministic sinusoidal embedding of a finite non-negative diffusion time. dimensions must be an Integer greater than or equal to 2. The option \"MaxPeriod\" (default 10000.) controls the lowest generated frequency; odd dimensions are padded with one trailing zero.";
 
 Begin["`Private`"]
-
-finiteRealTimeQ[value_] := Quiet[Check[
-  NumberQ[N[value]] &&
-    TrueQ[Im[N[value]] == 0] &&
-    FreeQ[N[value], Indeterminate | ComplexInfinity | DirectedInfinity],
-  False
-]];
 
 Options[sinusoidalTimeEmbedding] = {
   "MaxPeriod" -> 10000.
@@ -26,7 +28,7 @@ sinusoidalTimeEmbedding[time_, dimensions_, opts___] := Module[
     embedding},
   given = {opts};
   If[
-    !finiteRealTimeQ[time] || !TrueQ[time >= 0] ||
+    !finiteRealNumberQ[time] || !TrueQ[time >= 0] ||
       !IntegerQ[dimensions] || dimensions < 2 || !OptionQ[given],
     Message[sinusoidalTimeEmbedding::args];
     Return[$Failed]
@@ -44,7 +46,7 @@ sinusoidalTimeEmbedding[time_, dimensions_, opts___] := Module[
   ];
   maxPeriod = values["MaxPeriod"];
   If[
-    !finiteRealTimeQ[maxPeriod] || !TrueQ[maxPeriod >= 1],
+    !finiteRealNumberQ[maxPeriod] || !TrueQ[maxPeriod >= 1],
     Message[sinusoidalTimeEmbedding::maxperiod];
     Return[$Failed]
   ];
