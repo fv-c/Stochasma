@@ -16,11 +16,9 @@ Python dependency.
 
 ## Status
 
-The latest stable release is `0.3.0`.
+The latest stable release is `0.4.0`.
 
-Development version `0.4.0` is unreleased.
-
-Current development capabilities:
+Current stable capabilities:
 
 - Gaussian diffusion;
 - DDPM;
