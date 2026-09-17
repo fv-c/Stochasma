@@ -33,12 +33,25 @@ predictCleanSample::noise =
 predictCleanSample::args =
   "predictCleanSample expects xt, an Integer time, predictedNoise, and a diffusion schedule.";
 
+predictCleanSampleValidated[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association
+] := If[
+  t == 0,
+  xt,
+  (xt -
+      schedule["SqrtOneMinusAlphaBars"][[t]] predictedNoise)/
+    schedule["SqrtAlphaBars"][[t]]
+];
+
 predictCleanSample[
   xt_,
   t_Integer,
   predictedNoise_,
   schedule_Association
-] := Module[{sqrtAlphaBar, sqrtOneMinusAlphaBar},
+] := Module[{},
   If[!realNumericSampleQ[xt],
     Message[predictCleanSample::sample];
     Return[$Failed]
@@ -55,10 +68,7 @@ predictCleanSample[
     Message[predictCleanSample::noise];
     Return[$Failed]
   ];
-  If[t == 0, Return[xt]];
-  sqrtAlphaBar = schedule["SqrtAlphaBars"][[t]];
-  sqrtOneMinusAlphaBar = schedule["SqrtOneMinusAlphaBars"][[t]];
-  (xt - sqrtOneMinusAlphaBar predictedNoise)/sqrtAlphaBar
+  predictCleanSampleValidated[xt, t, predictedNoise, schedule]
 ];
 
 predictCleanSample[___] := (
@@ -77,12 +87,33 @@ reverseMeanVariance::noise =
 reverseMeanVariance::args =
   "reverseMeanVariance expects xt, an Integer time, predictedNoise, and a diffusion schedule.";
 
-reverseMeanVariance[
+reverseMeanVarianceValidated[
   xt_,
   t_Integer,
   predictedNoise_,
   schedule_Association
 ] := Module[{predictedX0, coefficient1, coefficient2},
+  predictedX0 = predictCleanSampleValidated[
+    xt,
+    t,
+    predictedNoise,
+    schedule
+  ];
+  coefficient1 = schedule["PosteriorMeanCoefficient1"][[t]];
+  coefficient2 = schedule["PosteriorMeanCoefficient2"][[t]];
+  <|
+    "PredictedX0" -> predictedX0,
+    "Mean" -> coefficient1 predictedX0 + coefficient2 xt,
+    "Variance" -> schedule["PosteriorVariances"][[t]]
+  |>
+];
+
+reverseMeanVariance[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association
+] := Module[{},
   If[!realNumericSampleQ[xt],
     Message[reverseMeanVariance::sample];
     Return[$Failed]
@@ -99,14 +130,7 @@ reverseMeanVariance[
     Message[reverseMeanVariance::noise];
     Return[$Failed]
   ];
-  predictedX0 = predictCleanSample[xt, t, predictedNoise, schedule];
-  coefficient1 = schedule["PosteriorMeanCoefficient1"][[t]];
-  coefficient2 = schedule["PosteriorMeanCoefficient2"][[t]];
-  <|
-    "PredictedX0" -> predictedX0,
-    "Mean" -> coefficient1 predictedX0 + coefficient2 xt,
-    "Variance" -> schedule["PosteriorVariances"][[t]]
-  |>
+  reverseMeanVarianceValidated[xt, t, predictedNoise, schedule]
 ];
 
 reverseMeanVariance[___] := (
@@ -116,20 +140,72 @@ reverseMeanVariance[___] := (
 
 reverseDiffuseStep::noise =
   "Noise must be a finite real numeric sample with the same shape as xt.";
+reverseDiffuseStep::sample =
+  "xt must be a finite real numeric scalar or non-empty array.";
+reverseDiffuseStep::schedule =
+  "The supplied diffusion schedule is malformed or internally inconsistent.";
+reverseDiffuseStep::time =
+  "Time t must be an Integer in the inclusive range 1 through `1`.";
+reverseDiffuseStep::prediction =
+  "predictedNoise must be finite, real-valued, and have the same shape as xt.";
 reverseDiffuseStep::args =
   "reverseDiffuseStep expects xt, an Integer time in 1 through T, predictedNoise, a diffusion schedule, and optional explicit noise.";
+
+reverseDiffuseStepValidated[
+  xt_,
+  t_Integer,
+  predictedNoise_,
+  schedule_Association,
+  noise_
+] := Module[{posterior},
+  posterior = reverseMeanVarianceValidated[
+    xt,
+    t,
+    predictedNoise,
+    schedule
+  ];
+  If[
+    t == 1,
+    posterior["Mean"],
+    posterior["Mean"] + Sqrt[posterior["Variance"]] noise
+  ]
+];
 
 reverseDiffuseStep[
   xt_,
   t_Integer,
   predictedNoise_,
   schedule_Association
-] := Module[{posterior, noise},
-  posterior = reverseMeanVariance[xt, t, predictedNoise, schedule];
-  If[posterior === $Failed, Return[$Failed]];
-  If[t == 1, Return[posterior["Mean"]]];
+] := Module[{noise},
+  If[!realNumericSampleQ[xt],
+    Message[reverseDiffuseStep::sample];
+    Return[$Failed]
+  ];
+  If[!diffusionScheduleQ[schedule],
+    Message[reverseDiffuseStep::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[reverseDiffuseStep::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[!sameSampleShapeQ[xt, predictedNoise],
+    Message[reverseDiffuseStep::prediction];
+    Return[$Failed]
+  ];
+  If[t == 1,
+    Return[
+      reverseDiffuseStepValidated[
+        xt,
+        t,
+        predictedNoise,
+        schedule,
+        0. xt
+      ]
+    ]
+  ];
   noise = randomNormalLike[xt];
-  posterior["Mean"] + Sqrt[posterior["Variance"]] noise
+  reverseDiffuseStepValidated[xt, t, predictedNoise, schedule, noise]
 ];
 
 reverseDiffuseStep[
@@ -138,15 +214,28 @@ reverseDiffuseStep[
   predictedNoise_,
   schedule_Association,
   noise_
-] := Module[{posterior},
-  posterior = reverseMeanVariance[xt, t, predictedNoise, schedule];
-  If[posterior === $Failed, Return[$Failed]];
+] := Module[{},
+  If[!realNumericSampleQ[xt],
+    Message[reverseDiffuseStep::sample];
+    Return[$Failed]
+  ];
+  If[!diffusionScheduleQ[schedule],
+    Message[reverseDiffuseStep::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[reverseDiffuseStep::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[!sameSampleShapeQ[xt, predictedNoise],
+    Message[reverseDiffuseStep::prediction];
+    Return[$Failed]
+  ];
   If[!sameSampleShapeQ[xt, noise],
     Message[reverseDiffuseStep::noise];
     Return[$Failed]
   ];
-  If[t == 1, Return[posterior["Mean"]]];
-  posterior["Mean"] + Sqrt[posterior["Variance"]] noise
+  reverseDiffuseStepValidated[xt, t, predictedNoise, schedule, noise]
 ];
 
 reverseDiffuseStep[___] := (
@@ -160,7 +249,8 @@ runReverseTests[] := Module[
   {passed = 0, assert, schedule, t, samples, noises, noisySamples,
     reconstructions, posterior, expectedMean, firstPosterior, explicitNoise,
     reverseStep, stochasticState, stochasticPrediction, firstDraw, secondDraw,
-    replay1, replay2, expectedNext, actualNext},
+    replay1, replay2, expectedNext, actualNext, validatedPosterior,
+    validatedStep},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ reverse/predictCleanSample: ", label];
@@ -257,6 +347,25 @@ runReverseTests[] := Module[
     "posterior variance matches the schedule coefficient",
     posterior["Variance"] === schedule["PosteriorVariances"][[t]]
   ];
+  validatedPosterior = reverseMeanVarianceValidated[
+    noisySamples[[2]],
+    t,
+    noises[[2]],
+    schedule
+  ];
+  assert[
+    "validated posterior helper is numerically identical to the public API",
+    Keys[validatedPosterior] === Keys[posterior] &&
+      numericSamplesCloseQ[
+        validatedPosterior["PredictedX0"],
+        posterior["PredictedX0"]
+      ] &&
+      numericSamplesCloseQ[
+        validatedPosterior["Mean"],
+        posterior["Mean"]
+      ] &&
+      validatedPosterior["Variance"] === posterior["Variance"]
+  ];
   firstPosterior = reverseMeanVariance[
     forwardDiffuse[samples[[2]], 1, schedule, noises[[2]]],
     1,
@@ -306,6 +415,17 @@ runReverseTests[] := Module[
     reverseStep === reverseDiffuseStep[
       noisySamples[[2]], t, noises[[2]], schedule, explicitNoise
     ]
+  ];
+  validatedStep = reverseDiffuseStepValidated[
+    noisySamples[[2]],
+    t,
+    noises[[2]],
+    schedule,
+    explicitNoise
+  ];
+  assert[
+    "validated reverse-step helper is numerically identical to the public API",
+    numericSamplesCloseQ[validatedStep, reverseStep]
   ];
   assert[
     "explicit reverse noise does not consult the current random stream",
