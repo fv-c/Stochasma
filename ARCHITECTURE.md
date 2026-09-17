@@ -4,8 +4,9 @@
 
 Stochasma provides general-purpose diffusion-model primitives for the Wolfram
 Language. Version 0.1 implements Gaussian diffusion / DDPM without assumptions
-about images, music, or a particular neural-network architecture. Version 0.2
-adds model-facing utilities and DDIM sampling while preserving that separation.
+about application domains or a particular neural-network architecture.
+Version 0.2 adds model-facing utilities and DDIM sampling while preserving
+that separation.
 Version 0.3 adds a discrete diffusion layer with categorical transition
 kernels, explicit transition schedules, shape-preserving time-indexed forward
 sampling, exact posteriors, and scalar predicted-`x0` reverse sampling.

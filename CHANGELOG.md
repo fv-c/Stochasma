@@ -1,23 +1,17 @@
 # Changelog
 
-## 0.4.0 — Unreleased
+## 0.4.0 — 2026-09-17
 
-- Refine the categorical predicted-`x0` reverse implementation to follow the
-  D3PM joint-marginalization parameterization, with direct predicted-`x0`
-  output at the final reverse step.
+- Use the canonical D3PM predicted-`x0` reverse process, including direct
+  predicted-`x0` behavior at the final categorical reverse step.
 - Validate Gaussian and categorical schedules once at each public sampler
-  boundary, then use private validated helpers inside DDPM, DDIM, and
-  categorical reverse loops without changing random-stream semantics.
-- Add encoder-backed latent-space epsilon-prediction training samples with
-  automatic or explicit latent noise.
-- Generalize decoded latent sampling through explicit `"Sampler"` and
-  `"SamplerOptions"` wrapper options, supporting both DDPM and DDIM with
-  final-latent-only decoding and preserved latent trajectory metadata. The
-  earlier unreleased top-level DDPM sampler options are replaced by this
-  unambiguous nested option scheme.
-- Move all tests from `core/*.wl` and `models/*.wl` into `tests/*.wlt`; add a
-  native headless `TestReport` runner and clean paclet-loading/public-API
-  integration checks.
+  boundary and use private validated helpers in sampler hot paths.
+- Provide encoder-backed latent training with automatic or explicit latent
+  noise.
+- Provide DDPM/DDIM latent sampling with final-latent-only decoding and
+  preserved latent trajectory metadata.
+- Keep production modules separate from test suites under `tests/`.
+- Verify clean paclet loading and exact public-API documentation coverage.
 
 ## 0.3.0 — 2026-09-16
 

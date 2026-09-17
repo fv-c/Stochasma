@@ -5,54 +5,27 @@ primitives. Version 0.1 implements Gaussian diffusion / DDPM while keeping
 neural-network models and application adapters external. Version 0.2 adds
 model-facing utilities and DDIM without coupling the core to a network
 architecture. Version 0.3 adds scalar categorical diffusion and reverse
-sampling.
-
-Development version 0.4 adds a sampler-independent latent composition layer,
-corrects the categorical predicted-`x0` reverse parameterization, and keeps
-deep schedule validation outside sampler hot loops.
+sampling. Version 0.4 adds canonical D3PM predicted-`x0` reverse sampling,
+validation-once sampler hot paths, and sampler-selectable DDPM/DDIM latent
+composition while keeping production code separate from the test suites.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
-It makes no image, music, or other application-domain assumptions and has no
+It makes no application-domain or data-representation assumptions and has no
 Python dependency.
 
 ## Status
 
-The latest stable release is `0.3.0`. Development version `0.4.0` is
-unreleased and begins the latent-diffusion composition layer.
+The latest stable release is `0.4.0`.
 
-Development version `0.4.0` currently adds:
+Stable capabilities:
 
-- encoder-backed latent-space epsilon-prediction training samples;
-- decoded latent sampling through either DDPM or DDIM;
-- canonical D3PM predicted-`x0` categorical reverse sampling;
-- validation-once private hot paths for Gaussian and categorical samplers;
-- test suites stored separately from production modules.
-
-Version `0.3.0` provides:
-
-- linear and cosine beta schedules;
-- canonical DDPM schedule coefficients;
-- closed-form forward diffusion;
-- clean-sample reconstruction;
-- posterior mean and variance calculation;
-- stochastic and explicit-noise reverse steps;
-- framework-independent training samples and epsilon loss;
-- predictor-driven DDPM sampling with seeded or explicit randomness;
-- deterministic sinusoidal time embeddings;
-- Wolfram `NetChain` and `NetGraph` predictor adapters;
-- batched epsilon-prediction training data with controlled randomness;
-- deterministic or controlled-stochastic DDIM sampling over full or
-  subsampled reverse timesteps;
-- a uniform categorical transition kernel;
-- categorical transition sampling through arbitrary row-stochastic matrices;
-- categorical transition schedules and cumulative kernels;
-- time-indexed categorical forward diffusion with automatic or explicit
-  uniform noise;
-- exact categorical posterior probabilities;
-- predicted-`x0` reverse probabilities and single-step categorical reverse
-  sampling;
-- predictor-driven categorical reverse sampling with trajectories and
-  controlled randomness.
+- Gaussian diffusion;
+- DDPM;
+- DDIM;
+- categorical diffusion and canonical D3PM predicted-`x0` reverse sampling;
+- training utilities;
+- Wolfram neural-network adapters;
+- latent diffusion composition with selectable DDPM/DDIM sampling.
 
 ## Categorical diffusion
 
