@@ -14,6 +14,14 @@ If[
     }]
   ]
 ];
+If[
+  DownValues[Stochasma`ddimSample] === {},
+  Get[
+    FileNameJoin[{
+      DirectoryName[$InputFileName], "..", "core", "ddim.wl"
+    }]
+  ]
+];
 
 BeginPackage["Stochasma`"]
 
@@ -21,7 +29,7 @@ makeLatentDiffusionTrainingSample::usage =
   "makeLatentDiffusionTrainingSample[encoder, input, t, schedule] evaluates encoder[input] once and creates an epsilon-prediction training example in the resulting latent space. The five-argument form uses explicit noise matching the encoded latent. The returned \"Clean\" field is the encoded latent.";
 
 latentDiffusionSample::usage =
-  "latentDiffusionSample[decoder, predictor, initialLatentNoise, schedule, opts] runs ancestral DDPM sampling in latent space and evaluates decoder[z0] exactly once after successful sampling. It accepts the options of ddpmSample. With \"ReturnTrajectory\" -> True it returns \"Sample\", \"LatentSample\", and \"LatentTrajectory\" fields; only the final latent is decoded.";
+  "latentDiffusionSample[decoder, predictor, initialLatent, schedule, opts] runs a selected Gaussian sampler in latent space and evaluates decoder[z0] exactly once after successful sampling. \"Sampler\" is ddpmSample by default and may also be ddimSample; \"SamplerOptions\" is a list of rules passed only to that sampler. When the sampler returns a trajectory, the wrapper returns \"Sample\", \"LatentSample\", and \"LatentTrajectory\", and preserves \"Timesteps\" when the sampler supplies them.";
 
 Begin["`Private`"]
 
@@ -91,12 +99,21 @@ makeLatentDiffusionTrainingSample[___] := (
   $Failed
 );
 
-Options[latentDiffusionSample] = Options[ddpmSample];
+Options[latentDiffusionSample] = {
+  "Sampler" -> ddpmSample,
+  "SamplerOptions" -> {}
+};
 
 latentDiffusionSample::decoder =
   "The decoder failed while evaluating the final latent sample.";
+latentDiffusionSample::sampler =
+  "The \"Sampler\" option must be ddpmSample or ddimSample.";
+latentDiffusionSample::opts =
+  "Options must use each of \"Sampler\" and \"SamplerOptions\" at most once; \"SamplerOptions\" must be a list of rules accepted by the selected sampler.";
 latentDiffusionSample::args =
-  "latentDiffusionSample expects a decoder callable, a predictor callable, initial latent noise, a diffusion schedule, and optional ddpmSample rules.";
+  "latentDiffusionSample expects a decoder callable, a predictor callable, an initial latent sample, a diffusion schedule, and optional wrapper rules.";
+
+latentSamplerQ[sampler_] := sampler === ddpmSample || sampler === ddimSample;
 
 latentDiffusionSample[
   decoder_,
@@ -104,12 +121,42 @@ latentDiffusionSample[
   initialLatentNoise_,
   schedule_Association,
   opts___
-] := Module[{latentResult, latentSample, decodedSample},
-  latentResult = ddpmSample[
+] := Module[
+  {
+    given, keys, values, sampler, samplerOptions, latentResult,
+    latentSample, decodedSample
+  },
+  given = {opts};
+  If[!OptionQ[given],
+    Message[latentDiffusionSample::opts];
+    Return[$Failed]
+  ];
+  keys = First /@ given;
+  If[
+    !AllTrue[keys, MemberQ[{"Sampler", "SamplerOptions"}, #] &] ||
+      DuplicateFreeQ[keys] === False,
+    Message[latentDiffusionSample::opts];
+    Return[$Failed]
+  ];
+  values = Join[
+    Association[Options[latentDiffusionSample]],
+    Association[given]
+  ];
+  sampler = values["Sampler"];
+  samplerOptions = values["SamplerOptions"];
+  If[!latentSamplerQ[sampler],
+    Message[latentDiffusionSample::sampler];
+    Return[$Failed]
+  ];
+  If[!ListQ[samplerOptions] || !OptionQ[samplerOptions],
+    Message[latentDiffusionSample::opts];
+    Return[$Failed]
+  ];
+  latentResult = sampler[
     predictor,
     initialLatentNoise,
     schedule,
-    opts
+    Sequence @@ samplerOptions
   ];
   If[latentResult === $Failed, Return[$Failed]];
   latentSample = If[
@@ -124,11 +171,18 @@ latentDiffusionSample[
   ];
   If[
     AssociationQ[latentResult],
-    <|
-      "Sample" -> decodedSample,
-      "LatentSample" -> latentSample,
-      "LatentTrajectory" -> latentResult["Trajectory"]
-    |>,
+    Join[
+      <|
+        "Sample" -> decodedSample,
+        "LatentSample" -> latentSample,
+        "LatentTrajectory" -> latentResult["Trajectory"]
+      |>,
+      If[
+        KeyExistsQ[latentResult, "Timesteps"],
+        <|"Timesteps" -> latentResult["Timesteps"]|>,
+        <||>
+      ]
+    ],
     decodedSample
   ]
 ];
@@ -146,7 +200,10 @@ runLatentTests[] := Module[
     calls, countingEncoder, firstDraw, secondDraw, replay1, replay2,
     expectedNext, actualNext, initialLatentNoise, predictor, stepNoises,
     decoder, directLatent, decodedSample, trajectoryResult, decodeCalls,
-    seenLatent, countingDecoder, seeded1, seeded2, directNext, wrappedNext
+    seenLatent, countingDecoder, seeded1, seeded2, directNext, wrappedNext,
+    ddimTimesteps, ddimNoises, directDDIM, decodedDDIM, ddimTrajectory,
+    ddimDecodeCalls, ddimCountingDecoder, ddimFullTimesteps,
+    directFullDDIM, decodedFullDDIM
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -365,7 +422,7 @@ runLatentTests[] := Module[
     predictor,
     initialLatentNoise,
     schedule,
-    "Noises" -> stepNoises
+    "SamplerOptions" -> {"Noises" -> stepNoises}
   ];
   assert[
     "decodes the final DDPM latent sample",
@@ -376,8 +433,10 @@ runLatentTests[] := Module[
     predictor,
     initialLatentNoise,
     schedule,
-    "Noises" -> stepNoises,
-    "ReturnTrajectory" -> True
+    "SamplerOptions" -> {
+      "Noises" -> stepNoises,
+      "ReturnTrajectory" -> True
+    }
   ];
   assert[
     "trajectory mode separates decoded output from latent state",
@@ -403,16 +462,21 @@ runLatentTests[] := Module[
     predictor,
     initialLatentNoise,
     schedule,
-    "Noises" -> stepNoises,
-    "ReturnTrajectory" -> True
+    "SamplerOptions" -> {
+      "Noises" -> stepNoises,
+      "ReturnTrajectory" -> True
+    }
   ];
   assert[
     "evaluates the decoder exactly once on z0 even in trajectory mode",
     decodeCalls === 1 && seenLatent === directLatent
   ];
   assert[
-    "exposes exactly the DDPM sampler options",
-    Options[latentDiffusionSample] === Options[ddpmSample]
+    "separates wrapper options from selected-sampler options",
+    Options[latentDiffusionSample] === {
+      "Sampler" -> ddpmSample,
+      "SamplerOptions" -> {}
+    }
   ];
   assert[
     "explicit reverse noises remain deterministic and preserve the random stream",
@@ -421,8 +485,10 @@ runLatentTests[] := Module[
       predictor,
       initialLatentNoise,
       schedule,
-      "Seed" -> 999,
-      "Noises" -> stepNoises
+      "SamplerOptions" -> {
+        "Seed" -> 999,
+        "Noises" -> stepNoises
+      }
     ] &&
       BlockRandom[
         SeedRandom[97531];
@@ -431,7 +497,7 @@ runLatentTests[] := Module[
           predictor,
           initialLatentNoise,
           schedule,
-          "Noises" -> stepNoises
+          "SamplerOptions" -> {"Noises" -> stepNoises}
         ];
         RandomReal[]
       ] === BlockRandom[SeedRandom[97531]; RandomReal[]]
@@ -441,14 +507,14 @@ runLatentTests[] := Module[
     predictor,
     initialLatentNoise,
     schedule,
-    "Seed" -> 13579
+    "SamplerOptions" -> {"Seed" -> 13579}
   ];
   seeded2 = latentDiffusionSample[
     decoder,
     predictor,
     initialLatentNoise,
     schedule,
-    "Seed" -> 13579
+    "SamplerOptions" -> {"Seed" -> 13579}
   ];
   assert[
     "integer seeds reproduce decoded samples and remain locally isolated",
@@ -460,7 +526,7 @@ runLatentTests[] := Module[
           predictor,
           initialLatentNoise,
           schedule,
-          "Seed" -> 13579
+          "SamplerOptions" -> {"Seed" -> 13579}
         ];
         RandomReal[]
       ] === BlockRandom[SeedRandom[86420]; RandomReal[]]
@@ -484,6 +550,109 @@ runLatentTests[] := Module[
     "automatic sampling consumes exactly the DDPM random stream",
     wrappedNext === directNext
   ];
+
+  ddimTimesteps = {6, 4, 2};
+  ddimNoises = ConstantArray[0. initialLatentNoise, Length[ddimTimesteps]];
+  directDDIM = ddimSample[
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Eta" -> 0.,
+    "Timesteps" -> ddimTimesteps,
+    "Noises" -> ddimNoises,
+    "ReturnTrajectory" -> True
+  ];
+  decodedDDIM = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Sampler" -> ddimSample,
+    "SamplerOptions" -> {
+      "Eta" -> 0.,
+      "Timesteps" -> ddimTimesteps,
+      "Noises" -> ddimNoises,
+      "ReturnTrajectory" -> True
+    }
+  ];
+  assert[
+    "DDIM subsampling decodes the direct final latent and preserves trajectory metadata",
+    Keys[decodedDDIM] === {
+      "Sample", "LatentSample", "LatentTrajectory", "Timesteps"
+    } &&
+      decodedDDIM["Sample"] === decoder[directDDIM["Sample"]] &&
+      decodedDDIM["LatentSample"] === directDDIM["Sample"] &&
+      decodedDDIM["LatentTrajectory"] === directDDIM["Trajectory"] &&
+      decodedDDIM["Timesteps"] === directDDIM["Timesteps"] &&
+      decodedDDIM["Timesteps"] === Append[ddimTimesteps, 0]
+  ];
+  ddimFullTimesteps = Reverse[Range[schedule["Steps"]]];
+  directFullDDIM = ddimSample[
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Eta" -> 0.,
+    "ReturnTrajectory" -> True
+  ];
+  decodedFullDDIM = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Sampler" -> ddimSample,
+    "SamplerOptions" -> {
+      "Eta" -> 0.,
+      "ReturnTrajectory" -> True
+    }
+  ];
+  assert[
+    "DDIM full timesteps are retained without inventing wrapper metadata",
+    decodedFullDDIM["Sample"] === decoder[directFullDDIM["Sample"]] &&
+      decodedFullDDIM["LatentTrajectory"] ===
+        directFullDDIM["Trajectory"] &&
+      decodedFullDDIM["Timesteps"] ===
+        Append[ddimFullTimesteps, 0]
+  ];
+  ddimDecodeCalls = 0;
+  ddimCountingDecoder = Function[value,
+    ddimDecodeCalls++;
+    <|"Decoded" -> value|>
+  ];
+  latentDiffusionSample[
+    ddimCountingDecoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Sampler" -> ddimSample,
+    "SamplerOptions" -> {
+      "Eta" -> 0.,
+      "Timesteps" -> ddimTimesteps,
+      "ReturnTrajectory" -> True
+    }
+  ];
+  assert[
+    "DDIM trajectory mode evaluates the decoder exactly once",
+    ddimDecodeCalls === 1
+  ];
+  assert[
+    "deterministic DDIM wrapping leaves the caller random stream unchanged",
+    BlockRandom[
+      SeedRandom[556677];
+      latentDiffusionSample[
+        decoder,
+        predictor,
+        initialLatentNoise,
+        schedule,
+        "Sampler" -> ddimSample,
+        "SamplerOptions" -> {
+          "Eta" -> 0.,
+          "Timesteps" -> ddimTimesteps
+        }
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[556677]; RandomReal[]]
+  ];
+
   decodeCalls = 0;
   assert[
     "sampling failures do not invoke the decoder",
@@ -493,7 +662,7 @@ runLatentTests[] := Module[
         Function[{state, time}, {0.}],
         initialLatentNoise,
         schedule,
-        "Noises" -> stepNoises
+        "SamplerOptions" -> {"Noises" -> stepNoises}
       ]
     ] === $Failed && decodeCalls === 0
   ];
@@ -505,12 +674,12 @@ runLatentTests[] := Module[
         predictor,
         initialLatentNoise,
         schedule,
-        "Noises" -> stepNoises
+        "SamplerOptions" -> {"Noises" -> stepNoises}
       ]
     ] === $Failed
   ];
   assert[
-    "invalid sampler inputs and options fail",
+    "invalid sampler inputs and wrapper options fail",
     Quiet[
       latentDiffusionSample[
         decoder,
@@ -534,6 +703,64 @@ runLatentTests[] := Module[
           initialLatentNoise,
           schedule,
           "Unknown" -> True
+        ]
+      ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "Seed" -> 1
+        ]
+      ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "Sampler" -> ddpmSample,
+          "Sampler" -> ddimSample
+        ]
+      ] === $Failed
+  ];
+  assert[
+    "invalid sampler selections and sampler-option sets fail",
+    Quiet[
+      latentDiffusionSample[
+        decoder,
+        predictor,
+        initialLatentNoise,
+        schedule,
+        "Sampler" -> Identity
+      ]
+    ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "SamplerOptions" -> "invalid"
+        ]
+      ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "SamplerOptions" -> {"Unknown" -> True}
+        ]
+      ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "SamplerOptions" -> {"Seed" -> 1, "Seed" -> 2}
         ]
       ] === $Failed
   ];
