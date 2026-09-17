@@ -2,6 +2,9 @@
 
 ## 0.5.0 — Unreleased
 
+- Define a representation-agnostic three-argument conditioned-predictor
+  protocol while preserving existing sampler signatures.
+
 ## 0.4.0 — 2026-09-17
 
 - Use the canonical D3PM predicted-`x0` reverse process, including direct

@@ -8,6 +8,8 @@ architecture. Version 0.3 adds scalar categorical diffusion and reverse
 sampling. Version 0.4 adds canonical D3PM predicted-`x0` reverse sampling,
 validation-once sampler hot paths, and sampler-selectable DDPM/DDIM latent
 composition while keeping production code separate from the test suites.
+Version 0.5 development adds generic conditioning without prescribing a data
+representation or model architecture.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no application-domain or data-representation assumptions and has no
@@ -27,6 +29,18 @@ Stable capabilities:
 - training utilities;
 - Wolfram neural-network adapters;
 - latent diffusion composition with selectable DDPM/DDIM sampling.
+
+## Conditioning protocol
+
+The v0.5 conditioning layer starts from the callable contract
+`conditionedPredictor[xt, t, conditioning]`. The conditioning value is any
+caller-owned Wolfram expression and is treated as opaque: Stochasma assigns no
+required type, keys, shape, encoding, modality, or unconditional sentinel.
+
+The expected prediction remains a property of the consumer. Gaussian
+consumers expect finite real epsilon predictions matching `xt`; categorical
+consumers expect valid clean-state probability vectors. Public samplers still
+accept the two-argument `predictor[xt, t]` protocol at this stage.
 
 ## Categorical diffusion
 
