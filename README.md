@@ -76,6 +76,34 @@ It accepts same-shape finite real scalars or arrays and a finite non-negative
 real scale. The operation preserves shape but does not normalize or clip its
 result; a downstream consumer still applies its own output constraints.
 
+Build a sampler-ready guided predictor by composing two independently bound
+conditions:
+
+```wl
+unconditionedPredictor = makeConditionedPredictor[
+  conditionedPredictor,
+  unconditionedValue
+];
+
+conditionalPredictor = makeConditionedPredictor[
+  conditionedPredictor,
+  conditioning
+];
+
+guidedPredictor = makeClassifierFreeGuidedPredictor[
+  unconditionedPredictor,
+  conditionalPredictor,
+  7.5
+];
+
+sample = ddpmSample[guidedPredictor, initialNoise, schedule];
+```
+
+For every `guidedPredictor[xt, t]` call, the wrapper evaluates the
+unconditioned branch first and the conditioned branch second, once each. It
+does so even at scales `0` and `1`, preserving a stable evaluation and random
+stream contract. A failure in the first branch short-circuits the second.
+
 ## Categorical diffusion
 
 Categorical distributions use row vectors. `Q_t` is the one-step transition

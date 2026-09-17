@@ -8,6 +8,8 @@
   value to the standard two-argument sampler protocol.
 - Add shape-preserving classifier-free guidance arithmetic for finite real
   scalar or array predictions.
+- Add unconditioned-first classifier-free guided predictor composition with a
+  stable two-branch evaluation contract.
 
 ## 0.4.0 — 2026-09-17
 

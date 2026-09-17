@@ -35,7 +35,7 @@ to the v0.1 implementation. Checked items are implemented.
 
 - [x] generic conditioning protocol;
 - [x] conditioned predictor composition;
-- [ ] classifier-free guidance primitives;
+- [x] classifier-free guidance primitives;
 - [ ] conditioning-aware training utilities;
 - [ ] conditioning regression tests.
 

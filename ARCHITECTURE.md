@@ -101,6 +101,13 @@ preserves shape but does not impose consumer-specific constraints such as
 categorical probability normalization; the eventual public consumer still
 validates the guided prediction.
 
+`makeClassifierFreeGuidedPredictor` composes independent unconditioned and
+conditioned two-argument predictors. Each call evaluates the unconditioned
+branch first and the conditioned branch second, exactly once each, then applies
+`classifierFreeGuidance`. Both branches are evaluated even when the scale is
+`0` or `1`, so the wrapper has one stable evaluation and random-stream
+contract. A failure from the first branch prevents the second from running.
+
 ## Validation boundary and sampler hot paths
 
 Public functions remain the trust boundary. They validate complete Gaussian or

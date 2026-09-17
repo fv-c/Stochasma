@@ -24,6 +24,7 @@ runPacletLoadingTests[repoRoot_String] := Module[
     "latentDiffusionSample",
     "linearBetaSchedule",
     "makeCategoricalSchedule",
+    "makeClassifierFreeGuidedPredictor",
     "makeConditionedPredictor",
     "makeDiffusionSchedule",
     "makeDiffusionTrainingBatch",

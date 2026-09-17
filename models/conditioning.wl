@@ -15,6 +15,9 @@ makeConditionedPredictor::usage =
 classifierFreeGuidance::usage =
   "classifierFreeGuidance[unconditionedPrediction, conditionedPrediction, guidanceScale] returns unconditionedPrediction + guidanceScale (conditionedPrediction - unconditionedPrediction). Predictions must be same-shape finite real numeric scalars or non-empty arrays, and guidanceScale must be a finite non-negative real scalar.";
 
+makeClassifierFreeGuidedPredictor::usage =
+  "makeClassifierFreeGuidedPredictor[unconditionedPredictor, conditionedPredictor, guidanceScale] returns a standard predictor[xt, t] that evaluates the unconditioned predictor followed by the conditioned predictor exactly once each and combines their outputs with classifierFreeGuidance. guidanceScale must be a finite non-negative real scalar.";
+
 Begin["`Private`"]
 
 makeConditionedPredictor::args =
@@ -71,6 +74,54 @@ classifierFreeGuidance[
 
 classifierFreeGuidance[___] := (
   Message[classifierFreeGuidance::args];
+  $Failed
+);
+
+makeClassifierFreeGuidedPredictor::scale =
+  "guidanceScale must be a finite non-negative real numeric scalar.";
+makeClassifierFreeGuidedPredictor::args =
+  "makeClassifierFreeGuidedPredictor expects unconditioned and conditioned predictor callables followed by a finite non-negative real guidance scale.";
+
+makeClassifierFreeGuidedPredictor[
+  unconditionedPredictor_,
+  conditionedPredictor_,
+  guidanceScale_
+] := Module[{},
+  If[
+    !finiteRealNumberQ[guidanceScale] || !TrueQ[guidanceScale >= 0],
+    Message[makeClassifierFreeGuidedPredictor::scale];
+    Return[$Failed]
+  ];
+  With[
+    {
+      unconditioned = unconditionedPredictor,
+      conditioned = conditionedPredictor,
+      scale = guidanceScale
+    },
+    Function[{xt, time},
+      Module[{unconditionedPrediction, conditionedPrediction},
+        unconditionedPrediction = unconditioned[xt, time];
+        If[
+          MemberQ[{$Failed, $Aborted}, unconditionedPrediction],
+          $Failed,
+          conditionedPrediction = conditioned[xt, time];
+          If[
+            MemberQ[{$Failed, $Aborted}, conditionedPrediction],
+            $Failed,
+            classifierFreeGuidance[
+              unconditionedPrediction,
+              conditionedPrediction,
+              scale
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+];
+
+makeClassifierFreeGuidedPredictor[___] := (
+  Message[makeClassifierFreeGuidedPredictor::args];
   $Failed
 );
 

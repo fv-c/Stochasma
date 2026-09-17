@@ -8,7 +8,12 @@ runConditioningTests[] := Module[
     representations, failingPredictor, randomConditioned, boundRandom,
     directRandom, schedule, noises, expectedSample, actualSample,
     malformedPredictor, unconditionedPrediction, conditionedPrediction,
-    guidedPrediction, expectedNext, actualNext
+    guidedPrediction, expectedNext, actualNext, callLog,
+    unconditionedPredictor, guidedPredictor, scaleZeroCalls,
+    scaleOneCalls, baseConditionedPredictor, opaqueUnconditioned,
+    opaqueConditioned, randomUnconditioned, randomConditionedPredictor,
+    directGuidedRandom, wrappedGuidedRandom, conditionalCalls,
+    unconditionalCalls
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -312,6 +317,232 @@ runConditioningTests[] := Module[
         classifierFreeGuidance[
           unconditionedPrediction,
           conditionedPrediction,
+          1.,
+          "extra"
+        ]
+      ] === $Failed
+  ];
+
+  currentFunction = "makeClassifierFreeGuidedPredictor";
+  callLog = {};
+  unconditionedPredictor = Function[{state, logicalTime},
+    AppendTo[callLog, {"Unconditioned", state, logicalTime}];
+    0. state
+  ];
+  conditionedPredictor = Function[{state, logicalTime},
+    AppendTo[callLog, {"Conditioned", state, logicalTime}];
+    0.5 state
+  ];
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    unconditionedPredictor,
+    conditionedPredictor,
+    2.
+  ];
+  assert[
+    "returns a standard two-argument predictor",
+    Head[guidedPredictor] === Function
+  ];
+  guidedPrediction = guidedPredictor[sample, time];
+  assert[
+    "evaluates unconditioned then conditioned with unchanged arguments",
+    callLog === {
+      {"Unconditioned", sample, time},
+      {"Conditioned", sample, time}
+    }
+  ];
+  assert[
+    "evaluates each predictor exactly once",
+    Count[callLog, {"Unconditioned", _, _}] === 1 &&
+      Count[callLog, {"Conditioned", _, _}] === 1
+  ];
+  assert[
+    "returns the classifier-free guided prediction",
+    guidedPrediction === sample
+  ];
+
+  scaleZeroCalls = {0, 0};
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, scaleZeroCalls[[1]]++; 2. state],
+    Function[{state, logicalTime}, scaleZeroCalls[[2]]++; 3. state],
+    0.
+  ];
+  guidedPrediction = guidedPredictor[sample, time];
+  scaleOneCalls = {0, 0};
+  predictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, scaleOneCalls[[1]]++; 2. state],
+    Function[{state, logicalTime}, scaleOneCalls[[2]]++; 3. state],
+    1.
+  ];
+  assert[
+    "evaluates both branches at boundary scales zero and one",
+    guidedPrediction === 2. sample &&
+      predictor[sample, time] === 3. sample &&
+      scaleZeroCalls === {1, 1} &&
+      scaleOneCalls === {1, 1}
+  ];
+
+  baseConditionedPredictor =
+    Function[{state, logicalTime, suppliedConditioning},
+      suppliedConditioning["Scale"] state +
+        suppliedConditioning["Bias"] logicalTime
+    ];
+  opaqueUnconditioned = makeConditionedPredictor[
+    baseConditionedPredictor,
+    <|"Scale" -> 0., "Bias" -> 0.|>
+  ];
+  opaqueConditioned = makeConditionedPredictor[
+    baseConditionedPredictor,
+    <|"Scale" -> 0.25, "Bias" -> 0.1|>
+  ];
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    opaqueUnconditioned,
+    opaqueConditioned,
+    2.
+  ];
+  assert[
+    "composes independently bound opaque conditioning values",
+    guidedPredictor[sample, time] === 0.5 sample + 0.2 time
+  ];
+
+  randomUnconditioned = Function[{state, logicalTime},
+    state RandomReal[] + logicalTime
+  ];
+  randomConditionedPredictor = Function[{state, logicalTime},
+    state RandomReal[] - logicalTime
+  ];
+  wrappedGuidedRandom = BlockRandom[
+    SeedRandom[86420];
+    {
+      makeClassifierFreeGuidedPredictor[
+        randomUnconditioned,
+        randomConditionedPredictor,
+        1.5
+      ][sample, time],
+      RandomReal[]
+    }
+  ];
+  directGuidedRandom = BlockRandom[
+    SeedRandom[86420];
+    {
+      classifierFreeGuidance[
+        randomUnconditioned[sample, time],
+        randomConditionedPredictor[sample, time],
+        1.5
+      ],
+      RandomReal[]
+    }
+  ];
+  assert[
+    "preserves sequential branch random-stream consumption",
+    wrappedGuidedRandom === directGuidedRandom
+  ];
+
+  conditionalCalls = 0;
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, $Failed],
+    Function[{state, logicalTime}, conditionalCalls++; 0. state],
+    1.
+  ];
+  assert[
+    "short-circuits when the unconditioned predictor fails",
+    guidedPredictor[sample, time] === $Failed && conditionalCalls === 0
+  ];
+  unconditionalCalls = 0;
+  conditionalCalls = 0;
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, unconditionalCalls++; 0. state],
+    Function[{state, logicalTime}, conditionalCalls++; $Failed],
+    1.
+  ];
+  assert[
+    "propagates a conditioned predictor failure after one call per branch",
+    guidedPredictor[sample, time] === $Failed &&
+      unconditionalCalls === 1 && conditionalCalls === 1
+  ];
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, {0., 0.}],
+    Function[{state, logicalTime}, {0., 0., 0.}],
+    1.
+  ];
+  assert[
+    "rejects branch predictions with mismatched shapes",
+    Quiet[guidedPredictor[sample, time]] === $Failed
+  ];
+
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, 0. state],
+    Function[{state, logicalTime}, 0.1 state],
+    2.
+  ];
+  actualSample = ddpmSample[
+    guidedPredictor,
+    sample,
+    schedule,
+    "Noises" -> noises
+  ];
+  expectedSample = ddpmSample[
+    Function[{state, logicalTime}, 0.2 state],
+    sample,
+    schedule,
+    "Noises" -> noises
+  ];
+  assert[
+    "composes with DDPM without changing sampler semantics",
+    actualSample === expectedSample
+  ];
+  guidedPredictor = makeClassifierFreeGuidedPredictor[
+    Function[{state, logicalTime}, {0., 0.}],
+    Function[{state, logicalTime}, {1., 1.}],
+    1.
+  ];
+  assert[
+    "leaves sample-shape validation to the sampler boundary",
+    Quiet[
+      ddpmSample[
+        guidedPredictor,
+        sample,
+        schedule,
+        "Noises" -> noises
+      ]
+    ] === $Failed
+  ];
+  assert[
+    "rejects invalid guidance scales at construction",
+    Quiet[
+      makeClassifierFreeGuidedPredictor[
+        unconditionedPredictor,
+        conditionedPredictor,
+        -0.1
+      ]
+    ] === $Failed &&
+      Quiet[
+        makeClassifierFreeGuidedPredictor[
+          unconditionedPredictor,
+          conditionedPredictor,
+          Infinity
+        ]
+      ] === $Failed &&
+      Quiet[
+        makeClassifierFreeGuidedPredictor[
+          unconditionedPredictor,
+          conditionedPredictor,
+          I
+        ]
+      ] === $Failed
+  ];
+  assert[
+    "missing and extra positional arguments fail",
+    Quiet[makeClassifierFreeGuidedPredictor[]] === $Failed &&
+      Quiet[
+        makeClassifierFreeGuidedPredictor[
+          unconditionedPredictor,
+          conditionedPredictor
+        ]
+      ] === $Failed &&
+      Quiet[
+        makeClassifierFreeGuidedPredictor[
+          unconditionedPredictor,
+          conditionedPredictor,
           1.,
           "extra"
         ]
