@@ -61,6 +61,21 @@ sample = ddpmSample[predictor, initialNoise, schedule];
 The wrapper passes the value and prediction through unchanged. The selected
 sampler remains responsible for validating the prediction it consumes.
 
+`classifierFreeGuidance` provides the representation-neutral affine
+combination itself:
+
+```wl
+guidedPrediction = classifierFreeGuidance[
+  unconditionedPrediction,
+  conditionedPrediction,
+  guidanceScale
+];
+```
+
+It accepts same-shape finite real scalars or arrays and a finite non-negative
+real scale. The operation preserves shape but does not normalize or clip its
+result; a downstream consumer still applies its own output constraints.
+
 ## Categorical diffusion
 
 Categorical distributions use row vectors. `Q_t` is the one-step transition

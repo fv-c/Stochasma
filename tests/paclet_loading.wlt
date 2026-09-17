@@ -15,6 +15,7 @@ runPacletLoadingTests[repoRoot_String] := Module[
     "categoricalReverseProbabilities",
     "categoricalReverseStep",
     "categoricalSample",
+    "classifierFreeGuidance",
     "cosineBetaSchedule",
     "ddimSample",
     "ddpmSample",

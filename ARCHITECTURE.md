@@ -90,6 +90,17 @@ standard two-argument predictor. The wrapper performs no representation- or
 consumer-specific validation and evaluates the underlying conditioned
 predictor exactly once for each `predictor[xt, t]` call.
 
+`classifierFreeGuidance` combines same-shape finite real predictions using
+
+```text
+unconditioned + guidanceScale (conditioned - unconditioned).
+```
+
+The scale must be a finite non-negative real scalar. The arithmetic primitive
+preserves shape but does not impose consumer-specific constraints such as
+categorical probability normalization; the eventual public consumer still
+validates the guided prediction.
+
 ## Validation boundary and sampler hot paths
 
 Public functions remain the trust boundary. They validate complete Gaussian or

@@ -6,6 +6,8 @@
   protocol while preserving existing sampler signatures.
 - Add conditioned-predictor composition by binding one opaque conditioning
   value to the standard two-argument sampler protocol.
+- Add shape-preserving classifier-free guidance arithmetic for finite real
+  scalar or array predictions.
 
 ## 0.4.0 — 2026-09-17
 
