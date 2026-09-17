@@ -2,13 +2,18 @@ Begin["Stochasma`Private`"]
 
 runTrainingTests[] := Module[
   {
-    passed = 0, assert, schedule, cleanSamples, times, noises, batch,
+    passed = 0, assert, currentFunction = "makeDiffusionTrainingBatch",
+    schedule, cleanSamples, times, noises, batch,
     seeded1, seeded2, differentSeed, automatic1, automatic2,
-    replay1, replay2, seed, expectedNext, actualNext
+    replay1, replay2, seed, expectedNext, actualNext,
+    conditioningValues, conditionedBatch, expectedConditionedBatch,
+    opaqueConditioning, opaqueSamples, opaqueTimes, opaqueNoises,
+    opaqueBatch, seededBase, seededConditioned, wrapperRun, baseRun,
+    mismatchNext
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
-    Print["✗ training/makeDiffusionTrainingBatch: ", label];
+    Print["✗ training/", currentFunction, ": ", label];
     Quit[1]
   ];
 
@@ -271,6 +276,190 @@ runTrainingTests[] := Module[
     Quiet[makeDiffusionTrainingBatch[]] === $Failed &&
       Quiet[
         makeDiffusionTrainingBatch[cleanSamples, schedule, 42]
+      ] === $Failed
+  ];
+
+  currentFunction = "makeConditionedDiffusionTrainingBatch";
+  conditioningValues = {
+    <|"Label" -> "first"|>,
+    <|"Label" -> "second"|>
+  };
+  conditionedBatch = makeConditionedDiffusionTrainingBatch[
+    cleanSamples,
+    conditioningValues,
+    schedule,
+    "Times" -> times,
+    "Noises" -> noises
+  ];
+  assert[
+    "appends one Conditioning field in documented key order",
+    Length[conditionedBatch] === Length[cleanSamples] &&
+      AllTrue[
+        conditionedBatch,
+        Keys[#] === {
+          "Clean", "Noisy", "Time", "Noise", "Conditioning"
+        } &
+      ]
+  ];
+  expectedConditionedBatch = MapThread[
+    Append[#1, "Conditioning" -> #2] &,
+    {batch, conditioningValues}
+  ];
+  assert[
+    "delegates diffusion fields unchanged and preserves alignment",
+    conditionedBatch === expectedConditionedBatch
+  ];
+
+  opaqueConditioning = {
+    7,
+    {"token", 2},
+    <|"Embedding" -> {0.1, 0.2}|>,
+    HoldForm[symbolicCondition[x]],
+    Automatic
+  };
+  opaqueSamples = ConstantArray[
+    First[cleanSamples],
+    Length[opaqueConditioning]
+  ];
+  opaqueTimes = Range[Length[opaqueConditioning]];
+  opaqueNoises = ConstantArray[
+    0. First[cleanSamples],
+    Length[opaqueConditioning]
+  ];
+  opaqueBatch = makeConditionedDiffusionTrainingBatch[
+    opaqueSamples,
+    opaqueConditioning,
+    schedule,
+    "Times" -> opaqueTimes,
+    "Noises" -> opaqueNoises
+  ];
+  assert[
+    "preserves arbitrary conditioning values without interpretation",
+    Lookup[opaqueBatch, "Conditioning"] === opaqueConditioning
+  ];
+  assert[
+    "fully explicit batches are deterministic and ignore Seed",
+    conditionedBatch === makeConditionedDiffusionTrainingBatch[
+      cleanSamples,
+      conditioningValues,
+      schedule,
+      "Seed" -> 999,
+      "Times" -> times,
+      "Noises" -> noises
+    ]
+  ];
+  assert[
+    "fully explicit batches do not consume the caller random stream",
+    BlockRandom[
+      SeedRandom[24680];
+      makeConditionedDiffusionTrainingBatch[
+        cleanSamples,
+        conditioningValues,
+        schedule,
+        "Times" -> times,
+        "Noises" -> noises
+      ];
+      RandomReal[]
+    ] === BlockRandom[SeedRandom[24680]; RandomReal[]]
+  ];
+
+  seededBase = makeDiffusionTrainingBatch[
+    cleanSamples,
+    schedule,
+    "Seed" -> 97531
+  ];
+  seededConditioned = makeConditionedDiffusionTrainingBatch[
+    cleanSamples,
+    conditioningValues,
+    schedule,
+    "Seed" -> 97531
+  ];
+  assert[
+    "integer seeds govern only the delegated diffusion batch",
+    (KeyDrop[#, "Conditioning"] & /@ seededConditioned) === seededBase &&
+      Lookup[seededConditioned, "Conditioning"] === conditioningValues
+  ];
+
+  wrapperRun = BlockRandom[
+    SeedRandom[112358];
+    {
+      makeConditionedDiffusionTrainingBatch[
+        cleanSamples,
+        conditioningValues,
+        schedule
+      ],
+      RandomReal[]
+    }
+  ];
+  baseRun = BlockRandom[
+    SeedRandom[112358];
+    {
+      makeDiffusionTrainingBatch[cleanSamples, schedule],
+      RandomReal[]
+    }
+  ];
+  assert[
+    "automatic batches preserve base random-stream consumption",
+    (KeyDrop[#, "Conditioning"] & /@ First[wrapperRun]) ===
+        First[baseRun] &&
+      Last[wrapperRun] === Last[baseRun]
+  ];
+
+  expectedNext = BlockRandom[SeedRandom[271828]; RandomReal[]];
+  mismatchNext = BlockRandom[
+    SeedRandom[271828];
+    Quiet[
+      makeConditionedDiffusionTrainingBatch[
+        cleanSamples,
+        {First[conditioningValues]},
+        schedule
+      ]
+    ];
+    RandomReal[]
+  ];
+  assert[
+    "rejects misaligned conditioning before consuming randomness",
+    mismatchNext === expectedNext
+  ];
+  assert[
+    "propagates base batch validation failures",
+    Quiet[
+      makeConditionedDiffusionTrainingBatch[{}, {}, schedule]
+    ] === $Failed &&
+      Quiet[
+        makeConditionedDiffusionTrainingBatch[
+          cleanSamples,
+          conditioningValues,
+          ReplacePart[schedule, "Steps" -> 5]
+        ]
+      ] === $Failed &&
+      Quiet[
+        makeConditionedDiffusionTrainingBatch[
+          cleanSamples,
+          conditioningValues,
+          schedule,
+          "Unknown" -> True
+        ]
+      ] === $Failed
+  ];
+  assert[
+    "rejects non-list conditioning and invalid arity",
+    Quiet[
+      makeConditionedDiffusionTrainingBatch[
+        cleanSamples,
+        "conditioning",
+        schedule
+      ]
+    ] === $Failed &&
+      Quiet[makeConditionedDiffusionTrainingBatch[]] === $Failed &&
+      Quiet[
+        makeConditionedDiffusionTrainingBatch[
+          cleanSamples,
+          conditioningValues,
+          schedule,
+          "Seed" -> 1,
+          "extra"
+        ]
       ] === $Failed
   ];
 

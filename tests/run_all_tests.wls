@@ -75,7 +75,7 @@ testObjects = {
   ],
   VerificationTest[
     Stochasma`Private`runTrainingTests[],
-    18,
+    28,
     TestID -> "training"
   ],
   VerificationTest[
@@ -95,7 +95,7 @@ report = TestReport[testObjects];
 If[
   report["TestsFailedCount"] === 0 &&
     report["TestsSucceededCount"] === Length[testObjects],
-  Print["✓ all tests — 318 tests passed"];
+  Print["✓ all tests — 328 tests passed"];
   Exit[0],
   Print[
     "✗ all tests: ",

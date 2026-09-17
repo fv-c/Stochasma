@@ -26,6 +26,7 @@ runPacletLoadingTests[repoRoot_String] := Module[
     "makeCategoricalSchedule",
     "makeClassifierFreeGuidedPredictor",
     "makeConditionedPredictor",
+    "makeConditionedDiffusionTrainingBatch",
     "makeDiffusionSchedule",
     "makeDiffusionTrainingBatch",
     "makeDiffusionTrainingSample",

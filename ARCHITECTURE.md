@@ -108,6 +108,12 @@ branch first and the conditioned branch second, exactly once each, then applies
 `0` or `1`, so the wrapper has one stable evaluation and random-stream
 contract. A failure from the first branch prevents the second from running.
 
+Conditioning-aware training delegates batch construction to
+`makeDiffusionTrainingBatch` and appends one aligned opaque `"Conditioning"`
+value to each association. It introduces no sentinel, dropout policy,
+broadcasting, or random draw; seeded and current-stream behavior therefore
+remains identical to the unconditioned batch utility.
+
 ## Validation boundary and sampler hot paths
 
 Public functions remain the trust boundary. They validate complete Gaussian or

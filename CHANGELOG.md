@@ -10,6 +10,8 @@
   scalar or array predictions.
 - Add unconditioned-first classifier-free guided predictor composition with a
   stable two-branch evaluation contract.
+- Add conditioning-aware diffusion training batches with aligned opaque values
+  and unchanged base-batch randomness.
 
 ## 0.4.0 — 2026-09-17
 

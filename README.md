@@ -285,6 +285,24 @@ Each result has the same `"Clean"`, `"Noisy"`, `"Time"`, and `"Noise"` fields
 as `makeDiffusionTrainingSample`, so callers remain free to adapt them to a
 specific training framework or network port layout.
 
+`makeConditionedDiffusionTrainingBatch` delegates the same diffusion work and
+appends one aligned opaque `"Conditioning"` value to every association:
+
+```wl
+conditionedBatch = makeConditionedDiffusionTrainingBatch[
+  cleanSamples,
+  conditioningValues,
+  schedule,
+  "Seed" -> 1234
+];
+```
+
+`conditioningValues` must be a list matching `cleanSamples`; each element may
+have any representation, including `Automatic`. The wrapper performs no
+broadcasting or dropout and consumes no additional randomness. Callers remain
+responsible for supplying any unconditional sentinel or precomputed dropout
+policy required by their model.
+
 ## Latent diffusion
 
 `makeLatentDiffusionTrainingSample` evaluates a caller-supplied encoder once
