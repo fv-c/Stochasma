@@ -12,6 +12,9 @@ BeginPackage["Stochasma`"]
 makeDiffusionTrainingBatch::usage =
   "makeDiffusionTrainingBatch[cleanSamples, schedule, opts] creates one epsilon-prediction training association per clean sample. \"Times\" and \"Noises\" may be Automatic or explicit lists matching cleanSamples. With automatic values, \"Seed\" -> Automatic uses the current random stream and an Integer seed is reproducible and locally isolated.";
 
+makeConditionedDiffusionTrainingBatch::usage =
+  "makeConditionedDiffusionTrainingBatch[cleanSamples, conditioningValues, schedule, opts] creates a diffusion training batch and appends one opaque \"Conditioning\" value to each training association. conditioningValues must be a list matching cleanSamples. The function accepts the same \"Seed\", \"Times\", and \"Noises\" options as makeDiffusionTrainingBatch and introduces no additional randomness or conditioning sentinel.";
+
 Begin["`Private`"]
 
 Options[makeDiffusionTrainingBatch] = {
@@ -122,6 +125,37 @@ makeDiffusionTrainingBatch[
 
 makeDiffusionTrainingBatch[___] := (
   Message[makeDiffusionTrainingBatch::args];
+  $Failed
+);
+
+Options[makeConditionedDiffusionTrainingBatch] =
+  Options[makeDiffusionTrainingBatch];
+
+makeConditionedDiffusionTrainingBatch::conditioning =
+  "conditioningValues must be a list with the same length as cleanSamples.";
+makeConditionedDiffusionTrainingBatch::args =
+  "makeConditionedDiffusionTrainingBatch expects a non-empty list of clean samples, a matching list of opaque conditioning values, a diffusion schedule, and optional rules.";
+
+makeConditionedDiffusionTrainingBatch[
+  cleanSamples_List,
+  conditioningValues_List,
+  schedule_Association,
+  opts___
+] := Module[{batch},
+  If[Length[conditioningValues] =!= Length[cleanSamples],
+    Message[makeConditionedDiffusionTrainingBatch::conditioning];
+    Return[$Failed]
+  ];
+  batch = makeDiffusionTrainingBatch[cleanSamples, schedule, opts];
+  If[batch === $Failed, Return[$Failed]];
+  MapThread[
+    Append[#1, "Conditioning" -> #2] &,
+    {batch, conditioningValues}
+  ]
+];
+
+makeConditionedDiffusionTrainingBatch[___] := (
+  Message[makeConditionedDiffusionTrainingBatch::args];
   $Failed
 );
 

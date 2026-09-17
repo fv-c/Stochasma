@@ -5,10 +5,12 @@ primitives. Version 0.1 implements Gaussian diffusion / DDPM while keeping
 neural-network models and application adapters external. Version 0.2 adds
 model-facing utilities and DDIM without coupling the core to a network
 architecture. Version 0.3 adds scalar categorical diffusion and reverse
-sampling. The unreleased Version 0.4 development line adds canonical D3PM
+sampling. Version 0.4 adds canonical D3PM
 predicted-`x0` reverse sampling, validation-once sampler hot paths, and
 sampler-selectable DDPM/DDIM latent composition while keeping production code
 separate from the test suites.
+Version 0.5 development adds generic conditioning without prescribing a data
+representation or model architecture.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no application-domain or data-representation assumptions and has no
@@ -17,8 +19,9 @@ Python dependency.
 ## Status
 
 The latest stable release is `0.4.0`.
+Version `0.5.0` is under development and remains unreleased.
 
-Current stable capabilities:
+Current development capabilities:
 
 - Gaussian diffusion;
 - DDPM;
@@ -26,7 +29,82 @@ Current stable capabilities:
 - categorical diffusion and canonical D3PM predicted-`x0` reverse sampling;
 - training utilities;
 - Wolfram neural-network adapters;
-- latent diffusion composition with selectable DDPM/DDIM sampling.
+- latent diffusion composition with selectable DDPM/DDIM sampling;
+- generic conditioning and classifier-free guidance composition.
+
+## Conditioning protocol
+
+The v0.5 conditioning layer starts from the callable contract
+`conditionedPredictor[xt, t, conditioning]`. The conditioning value is any
+caller-owned Wolfram expression and is treated as opaque: Stochasma assigns no
+required type, keys, shape, encoding, modality, or unconditional sentinel.
+
+The expected prediction remains a property of the consumer. Gaussian
+consumers expect finite real epsilon predictions matching `xt`; categorical
+consumers expect valid clean-state probability vectors. Public samplers still
+accept the two-argument `predictor[xt, t]` protocol.
+
+Use `makeConditionedPredictor` to bind one conditioning value without teaching
+the sampler about its representation:
+
+```wl
+conditionedPredictor = Function[{xt, t, conditioning},
+  conditioning["Scale"] xt
+];
+
+predictor = makeConditionedPredictor[
+  conditionedPredictor,
+  <|"Scale" -> 0.25|>
+];
+
+sample = ddpmSample[predictor, initialNoise, schedule];
+```
+
+The wrapper passes the value and prediction through unchanged. The selected
+sampler remains responsible for validating the prediction it consumes.
+
+`classifierFreeGuidance` provides the representation-neutral affine
+combination itself:
+
+```wl
+guidedPrediction = classifierFreeGuidance[
+  unconditionedPrediction,
+  conditionedPrediction,
+  guidanceScale
+];
+```
+
+It accepts same-shape finite real scalars or arrays and a finite non-negative
+real scale. The operation preserves shape but does not normalize or clip its
+result; a downstream consumer still applies its own output constraints.
+
+Build a sampler-ready guided predictor by composing two independently bound
+conditions:
+
+```wl
+unconditionedPredictor = makeConditionedPredictor[
+  conditionedPredictor,
+  unconditionedValue
+];
+
+conditionalPredictor = makeConditionedPredictor[
+  conditionedPredictor,
+  conditioning
+];
+
+guidedPredictor = makeClassifierFreeGuidedPredictor[
+  unconditionedPredictor,
+  conditionalPredictor,
+  7.5
+];
+
+sample = ddpmSample[guidedPredictor, initialNoise, schedule];
+```
+
+For every `guidedPredictor[xt, t]` call, the wrapper evaluates the
+unconditioned branch first and the conditioned branch second, once each. It
+does so even at scales `0` and `1`, preserving a stable evaluation and random
+stream contract. A failure in the first branch short-circuits the second.
 
 ## Categorical diffusion
 
@@ -208,6 +286,24 @@ Pass matching `"Times"` and `"Noises"` lists for a fully deterministic batch.
 Each result has the same `"Clean"`, `"Noisy"`, `"Time"`, and `"Noise"` fields
 as `makeDiffusionTrainingSample`, so callers remain free to adapt them to a
 specific training framework or network port layout.
+
+`makeConditionedDiffusionTrainingBatch` delegates the same diffusion work and
+appends one aligned opaque `"Conditioning"` value to every association:
+
+```wl
+conditionedBatch = makeConditionedDiffusionTrainingBatch[
+  cleanSamples,
+  conditioningValues,
+  schedule,
+  "Seed" -> 1234
+];
+```
+
+`conditioningValues` must be a list matching `cleanSamples`; each element may
+have any representation, including `Automatic`. The wrapper performs no
+broadcasting or dropout and consumes no additional randomness. Callers remain
+responsible for supplying any unconditional sentinel or precomputed dropout
+policy required by their model.
 
 ## Latent diffusion
 

@@ -13,6 +13,8 @@ sampling, exact posteriors, and scalar predicted-`x0` reverse sampling.
 Version 0.4 adds a latent-diffusion composition layer whose encoders, decoders,
 and sampler choice remain external to the Gaussian core. It also separates
 public structural validation from private validated sampler hot paths.
+Version 0.5 adds a representation-agnostic conditioning layer while preserving
+the existing two-argument sampler predictor boundary.
 
 ## Layers
 
@@ -67,6 +69,50 @@ from the selected sampler's rules through `"SamplerOptions"`. When requested,
 the reverse trajectory remains in latent space; intermediate noisy latents are
 not decoded. Timestep metadata is preserved only when the selected sampler
 returns it.
+
+## Conditioning protocol
+
+A conditioned predictor follows the callable contract
+`conditionedPredictor[xt, t, conditioning]`. The conditioning value is an
+opaque caller-owned expression: the protocol prescribes no type, keys, shape,
+encoding, modality, or unconditional sentinel. This keeps structured symbolic
+data and application-specific representations outside the paclet core.
+
+Conditioned-predictor output remains consumer-specific. A Gaussian consumer
+expects a finite real epsilon prediction with the same shape as `xt`; a
+categorical consumer expects a valid probability vector over clean states.
+The downstream public consumer remains responsible for validating that output.
+The protocol itself does not change the existing `predictor[xt, t]` signatures
+accepted by public samplers.
+
+`makeConditionedPredictor` binds one opaque conditioning value and returns a
+standard two-argument predictor. The wrapper performs no representation- or
+consumer-specific validation and evaluates the underlying conditioned
+predictor exactly once for each `predictor[xt, t]` call.
+
+`classifierFreeGuidance` combines same-shape finite real predictions using
+
+```text
+unconditioned + guidanceScale (conditioned - unconditioned).
+```
+
+The scale must be a finite non-negative real scalar. The arithmetic primitive
+preserves shape but does not impose consumer-specific constraints such as
+categorical probability normalization; the eventual public consumer still
+validates the guided prediction.
+
+`makeClassifierFreeGuidedPredictor` composes independent unconditioned and
+conditioned two-argument predictors. Each call evaluates the unconditioned
+branch first and the conditioned branch second, exactly once each, then applies
+`classifierFreeGuidance`. Both branches are evaluated even when the scale is
+`0` or `1`, so the wrapper has one stable evaluation and random-stream
+contract. A failure from the first branch prevents the second from running.
+
+Conditioning-aware training delegates batch construction to
+`makeDiffusionTrainingBatch` and appends one aligned opaque `"Conditioning"`
+value to each association. It introduces no sentinel, dropout policy,
+broadcasting, or random draw; seeded and current-stream behavior therefore
+remains identical to the unconditioned batch utility.
 
 ## Validation boundary and sampler hot paths
 
@@ -206,6 +252,8 @@ categorical transition at `t = 1` remains stochastic in general.
   scalar or non-empty array before Gaussian diffusion is applied.
 - Latent decoders run only after successful reverse sampling and exactly once
   on the final latent; decoded values may use an external representation.
+- Conditioning values are opaque caller-owned expressions and introduce no
+  application-domain assumptions into the core.
 
 ## Module map
 
@@ -218,6 +266,7 @@ core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
 core/categorical.wl categorical kernels, schedules, and forward and reverse sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
+models/conditioning.wl opaque conditioning and predictor composition
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data
 models/latent.wl    encoder-backed training and decoded DDPM/DDIM composition

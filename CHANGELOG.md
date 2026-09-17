@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 — Unreleased
+
+- Define a representation-agnostic three-argument conditioned-predictor
+  protocol while preserving existing sampler signatures.
+- Add conditioned-predictor composition by binding one opaque conditioning
+  value to the standard two-argument sampler protocol.
+- Add shape-preserving classifier-free guidance arithmetic for finite real
+  scalar or array predictions.
+- Add unconditioned-first classifier-free guided predictor composition with a
+  stable two-branch evaluation contract.
+- Add conditioning-aware diffusion training batches with aligned opaque values
+  and unchanged base-batch randomness.
+- Add conditioning regressions for DDPM, DDIM, categorical sampling, training
+  randomness, and clean public-API loading.
+
 ## 0.4.0 — 2026-09-17
 
 - Use the canonical D3PM predicted-`x0` reverse process, including direct
