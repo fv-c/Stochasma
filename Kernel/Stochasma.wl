@@ -12,7 +12,8 @@ With[
       "core/categorical.wl",
       "models/embeddings.wl",
       "models/adapters.wl",
-      "models/training.wl"
+      "models/training.wl",
+      "models/latent.wl"
     }
   ]
 ]

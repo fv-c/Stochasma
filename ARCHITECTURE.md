@@ -9,6 +9,8 @@ adds model-facing utilities and DDIM sampling while preserving that separation.
 Version 0.3 adds a discrete diffusion layer with categorical transition
 kernels, explicit transition schedules, shape-preserving time-indexed forward
 sampling, exact posteriors, and scalar predicted-`x0` reverse sampling.
+Version 0.4 begins a latent-diffusion composition layer whose encoders remain
+external to the Gaussian core.
 
 ## Layers
 
@@ -49,6 +51,12 @@ input adapter, but the Wolfram neural-network bridge does not depend on a
 specific embedding representation. Neural-network adapters translate
 `predictor[xt, t]` calls into network inputs, but the core does not prescribe a
 network architecture or input layout.
+
+Latent-diffusion training evaluates a caller-supplied encoder once, validates
+that its output is a finite real numeric sample, and then delegates the forward
+process and epsilon target construction to the Gaussian training primitive.
+The source input may have any representation accepted by the encoder; only the
+encoded latent crosses into the diffusion core.
 
 ## Time convention
 
@@ -161,6 +169,8 @@ categorical transition at `t = 1` remains stochastic in general.
 - Categorical reverse sampling accepts scalar states, validates every
   predicted clean-state probability vector, and supports current-stream,
   locally seeded, or explicit uniform randomness.
+- Latent encoders are caller-supplied and must produce a finite real numeric
+  scalar or non-empty array before Gaussian diffusion is applied.
 
 ## Module map
 
@@ -175,4 +185,5 @@ core/categorical.wl categorical kernels, schedules, and forward and reverse samp
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data
+models/latent.wl    encoder-backed latent-space training data
 ```

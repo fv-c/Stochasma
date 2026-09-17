@@ -14,7 +14,11 @@ Python dependency.
 ## Status
 
 The latest stable release is `0.3.0`. Development version `0.4.0` is
-unreleased, with no 0.4 features implemented yet.
+unreleased and begins the latent-diffusion composition layer.
+
+Development version `0.4.0` currently adds:
+
+- encoder-backed latent-space epsilon-prediction training samples.
 
 Version `0.3.0` provides:
 
@@ -212,6 +216,29 @@ Pass matching `"Times"` and `"Noises"` lists for a fully deterministic batch.
 Each result has the same `"Clean"`, `"Noisy"`, `"Time"`, and `"Noise"` fields
 as `makeDiffusionTrainingSample`, so callers remain free to adapt them to a
 specific training framework or network port layout.
+
+## Latent diffusion training
+
+`makeLatentDiffusionTrainingSample` evaluates a caller-supplied encoder once
+and applies the existing Gaussian training objective to its output. The source
+input may be structured or application-specific; the encoder must return a
+finite real numeric scalar or non-empty array. The returned `"Clean"` field is
+the encoded latent.
+
+```wl
+encoder = Function[input, input["Latent"]];
+
+trainingSample = makeLatentDiffusionTrainingSample[
+  encoder,
+  <|"Latent" -> {0.2, -0.4, 0.8}|>,
+  5,
+  schedule
+];
+```
+
+Pass a fifth argument for deterministic explicit noise matching the encoded
+latent. Automatic noise consumes the caller's current random stream exactly as
+`makeDiffusionTrainingSample` does.
 
 ## Local installation and loading
 

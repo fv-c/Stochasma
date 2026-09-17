@@ -2,6 +2,9 @@
 
 ## 0.4.0 — Unreleased
 
+- Add encoder-backed latent-space epsilon-prediction training samples with
+  automatic or explicit latent noise.
+
 ## 0.3.0 — 2026-09-16
 
 - Add a uniform categorical transition kernel.
