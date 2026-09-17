@@ -15,7 +15,7 @@
 - Add conditioning regressions for DDPM, DDIM, categorical sampling, training
   randomness, and clean public-API loading.
 
-## 0.4.0 — 2026-09-17
+## 0.4.0 — Unreleased
 
 - Use the canonical D3PM predicted-`x0` reverse process, including direct
   predicted-`x0` behavior at the final categorical reverse step.
