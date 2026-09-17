@@ -6,11 +6,22 @@ If[
     }]
   ]
 ];
+If[
+  DownValues[Stochasma`ddpmSample] === {},
+  Get[
+    FileNameJoin[{
+      DirectoryName[$InputFileName], "..", "core", "sampling.wl"
+    }]
+  ]
+];
 
 BeginPackage["Stochasma`"]
 
 makeLatentDiffusionTrainingSample::usage =
   "makeLatentDiffusionTrainingSample[encoder, input, t, schedule] evaluates encoder[input] once and creates an epsilon-prediction training example in the resulting latent space. The five-argument form uses explicit noise matching the encoded latent. The returned \"Clean\" field is the encoded latent.";
+
+latentDiffusionSample::usage =
+  "latentDiffusionSample[decoder, predictor, initialLatentNoise, schedule, opts] runs ancestral DDPM sampling in latent space and evaluates decoder[z0] exactly once after successful sampling. It accepts the options of ddpmSample. With \"ReturnTrajectory\" -> True it returns \"Sample\", \"LatentSample\", and \"LatentTrajectory\" fields; only the final latent is decoded.";
 
 Begin["`Private`"]
 
@@ -80,17 +91,66 @@ makeLatentDiffusionTrainingSample[___] := (
   $Failed
 );
 
+Options[latentDiffusionSample] = Options[ddpmSample];
+
+latentDiffusionSample::decoder =
+  "The decoder failed while evaluating the final latent sample.";
+latentDiffusionSample::args =
+  "latentDiffusionSample expects a decoder callable, a predictor callable, initial latent noise, a diffusion schedule, and optional ddpmSample rules.";
+
+latentDiffusionSample[
+  decoder_,
+  predictor_,
+  initialLatentNoise_,
+  schedule_Association,
+  opts___
+] := Module[{latentResult, latentSample, decodedSample},
+  latentResult = ddpmSample[
+    predictor,
+    initialLatentNoise,
+    schedule,
+    opts
+  ];
+  If[latentResult === $Failed, Return[$Failed]];
+  latentSample = If[
+    AssociationQ[latentResult],
+    latentResult["Sample"],
+    latentResult
+  ];
+  decodedSample = Check[decoder[latentSample], $Failed];
+  If[MemberQ[{$Failed, $Aborted}, decodedSample],
+    Message[latentDiffusionSample::decoder];
+    Return[$Failed]
+  ];
+  If[
+    AssociationQ[latentResult],
+    <|
+      "Sample" -> decodedSample,
+      "LatentSample" -> latentSample,
+      "LatentTrajectory" -> latentResult["Trajectory"]
+    |>,
+    decodedSample
+  ]
+];
+
+latentDiffusionSample[___] := (
+  Message[latentDiffusionSample::args];
+  $Failed
+);
+
 (* === TESTS === *)
 
 runLatentTests[] := Module[
   {
     passed = 0, assert, schedule, input, encoder, latent, noise, t, sample,
     calls, countingEncoder, firstDraw, secondDraw, replay1, replay2,
-    expectedNext, actualNext
+    expectedNext, actualNext, initialLatentNoise, predictor, stepNoises,
+    decoder, directLatent, decodedSample, trajectoryResult, decodeCalls,
+    seenLatent, countingDecoder, seeded1, seeded2, directNext, wrappedNext
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
-    Print["✗ latent/makeLatentDiffusionTrainingSample: ", label];
+    Print["✗ latent: ", label];
     Quit[1]
   ];
 
@@ -283,6 +343,208 @@ runLatentTests[] := Module[
           schedule,
           noise,
           "extra"
+        ]
+      ] === $Failed
+  ];
+
+  initialLatentNoise = {0.5, -1., 1.5};
+  predictor = Function[{state, time}, 0. state + 0.01 time];
+  stepNoises = Table[
+    ConstantArray[N[time]/10., 3],
+    {time, schedule["Steps"]}
+  ];
+  decoder = Function[value, <|"Decoded" -> (2. value)|>];
+  directLatent = ddpmSample[
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Noises" -> stepNoises
+  ];
+  decodedSample = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Noises" -> stepNoises
+  ];
+  assert[
+    "decodes the final DDPM latent sample",
+    decodedSample === decoder[directLatent]
+  ];
+  trajectoryResult = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Noises" -> stepNoises,
+    "ReturnTrajectory" -> True
+  ];
+  assert[
+    "trajectory mode separates decoded output from latent state",
+    Keys[trajectoryResult] === {
+      "Sample", "LatentSample", "LatentTrajectory"
+    } &&
+      trajectoryResult["Sample"] === decoder[directLatent] &&
+      trajectoryResult["LatentSample"] === directLatent &&
+      First[trajectoryResult["LatentTrajectory"]] === initialLatentNoise &&
+      Last[trajectoryResult["LatentTrajectory"]] === directLatent &&
+      Length[trajectoryResult["LatentTrajectory"]] ===
+        schedule["Steps"] + 1
+  ];
+  decodeCalls = 0;
+  seenLatent = None;
+  countingDecoder = Function[value,
+    decodeCalls++;
+    seenLatent = value;
+    <|"Decoded" -> value|>
+  ];
+  latentDiffusionSample[
+    countingDecoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Noises" -> stepNoises,
+    "ReturnTrajectory" -> True
+  ];
+  assert[
+    "evaluates the decoder exactly once on z0 even in trajectory mode",
+    decodeCalls === 1 && seenLatent === directLatent
+  ];
+  assert[
+    "exposes exactly the DDPM sampler options",
+    Options[latentDiffusionSample] === Options[ddpmSample]
+  ];
+  assert[
+    "explicit reverse noises remain deterministic and preserve the random stream",
+    decodedSample === latentDiffusionSample[
+      decoder,
+      predictor,
+      initialLatentNoise,
+      schedule,
+      "Seed" -> 999,
+      "Noises" -> stepNoises
+    ] &&
+      BlockRandom[
+        SeedRandom[97531];
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "Noises" -> stepNoises
+        ];
+        RandomReal[]
+      ] === BlockRandom[SeedRandom[97531]; RandomReal[]]
+  ];
+  seeded1 = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Seed" -> 13579
+  ];
+  seeded2 = latentDiffusionSample[
+    decoder,
+    predictor,
+    initialLatentNoise,
+    schedule,
+    "Seed" -> 13579
+  ];
+  assert[
+    "integer seeds reproduce decoded samples and remain locally isolated",
+    seeded1 === seeded2 &&
+      BlockRandom[
+        SeedRandom[86420];
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "Seed" -> 13579
+        ];
+        RandomReal[]
+      ] === BlockRandom[SeedRandom[86420]; RandomReal[]]
+  ];
+  directNext = BlockRandom[
+    SeedRandom[112233];
+    ddpmSample[predictor, initialLatentNoise, schedule];
+    RandomReal[]
+  ];
+  wrappedNext = BlockRandom[
+    SeedRandom[112233];
+    latentDiffusionSample[
+      decoder,
+      predictor,
+      initialLatentNoise,
+      schedule
+    ];
+    RandomReal[]
+  ];
+  assert[
+    "automatic sampling consumes exactly the DDPM random stream",
+    wrappedNext === directNext
+  ];
+  decodeCalls = 0;
+  assert[
+    "sampling failures do not invoke the decoder",
+    Quiet[
+      latentDiffusionSample[
+        Function[value, decodeCalls++; value],
+        Function[{state, time}, {0.}],
+        initialLatentNoise,
+        schedule,
+        "Noises" -> stepNoises
+      ]
+    ] === $Failed && decodeCalls === 0
+  ];
+  assert[
+    "decoder failures return Failed",
+    Quiet[
+      latentDiffusionSample[
+        Function[value, $Failed],
+        predictor,
+        initialLatentNoise,
+        schedule,
+        "Noises" -> stepNoises
+      ]
+    ] === $Failed
+  ];
+  assert[
+    "invalid sampler inputs and options fail",
+    Quiet[
+      latentDiffusionSample[
+        decoder,
+        predictor,
+        {0., Infinity, 0.},
+        schedule
+      ]
+    ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          ReplacePart[schedule, "Steps" -> 5]
+        ]
+      ] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise,
+          schedule,
+          "Unknown" -> True
+        ]
+      ] === $Failed
+  ];
+  assert[
+    "missing sampler arguments fail",
+    Quiet[latentDiffusionSample[]] === $Failed &&
+      Quiet[
+        latentDiffusionSample[
+          decoder,
+          predictor,
+          initialLatentNoise
         ]
       ] === $Failed
   ];

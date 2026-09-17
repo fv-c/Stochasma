@@ -240,6 +240,25 @@ Pass a fifth argument for deterministic explicit noise matching the encoded
 latent. Automatic noise consumes the caller's current random stream exactly as
 `makeDiffusionTrainingSample` does.
 
+`latentDiffusionSample` runs the existing ancestral DDPM sampler entirely in
+latent space, then evaluates a caller-supplied decoder exactly once on the
+final latent `z0`:
+
+```wl
+decodedSample = latentDiffusionSample[
+  decoder,
+  predictor,
+  initialLatentNoise,
+  schedule,
+  "Seed" -> 1234
+];
+```
+
+It accepts the same `"Seed"`, `"Noises"`, and `"ReturnTrajectory"` options as
+`ddpmSample`. Trajectory mode returns `"Sample"` for the decoded value,
+`"LatentSample"` for `z0`, and `"LatentTrajectory"` for `{zT, ..., z0}`.
+Intermediate noisy latents are never decoded.
+
 ## Local installation and loading
 
 Load a development checkout without copying it:

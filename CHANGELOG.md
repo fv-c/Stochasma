@@ -4,6 +4,8 @@
 
 - Add encoder-backed latent-space epsilon-prediction training samples with
   automatic or explicit latent noise.
+- Add decoded ancestral DDPM sampling with final-latent-only decoding and an
+  optional latent reverse trajectory.
 
 ## 0.3.0 — 2026-09-16
 

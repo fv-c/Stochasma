@@ -26,7 +26,7 @@ branch.
 
 - latent diffusion:
   - [x] encoder-backed latent-space training samples;
-  - decoded latent-space sampling;
+  - [x] decoded latent-space sampling;
 - conditioning interfaces.
 
 ## Future adapters

@@ -58,6 +58,11 @@ process and epsilon target construction to the Gaussian training primitive.
 The source input may have any representation accepted by the encoder; only the
 encoded latent crosses into the diffusion core.
 
+Latent-diffusion sampling delegates the complete ancestral reverse process to
+`ddpmSample` and evaluates a caller-supplied decoder exactly once on the final
+latent `z0`. When requested, the reverse trajectory remains in latent space;
+intermediate noisy latents are not decoded.
+
 ## Time convention
 
 - `t = 0` always denotes the clean sample `x0`.
@@ -171,6 +176,8 @@ categorical transition at `t = 1` remains stochastic in general.
   locally seeded, or explicit uniform randomness.
 - Latent encoders are caller-supplied and must produce a finite real numeric
   scalar or non-empty array before Gaussian diffusion is applied.
+- Latent decoders run only after successful reverse sampling and exactly once
+  on the final latent; decoded values may use an external representation.
 
 ## Module map
 
@@ -185,5 +192,5 @@ core/categorical.wl categorical kernels, schedules, and forward and reverse samp
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data
-models/latent.wl    encoder-backed latent-space training data
+models/latent.wl    encoder-backed training and decoded DDPM sampling
 ```
