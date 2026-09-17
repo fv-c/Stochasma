@@ -588,6 +588,33 @@ categoricalReverseStep::args =
   "categoricalReverseStep expects an Integer scalar state xt, an Integer time, a length-K list of predicted x0 probabilities, a categorical schedule, and optionally one uniform noise value.";
 categoricalReverseStep::noise =
   "Explicit uniform noise must be a finite real value in the half-open interval [0, 1).";
+categoricalReverseStep::schedule =
+  "The supplied categorical schedule is malformed or internally inconsistent.";
+categoricalReverseStep::time =
+  "Time t must be an Integer in the inclusive range 1 through `1`.";
+categoricalReverseStep::xt =
+  "State xt must be an Integer between 1 and the categorical schedule's category count.";
+categoricalReverseStep::probabilities =
+  "Predicted x0 probabilities must be a length-K list of finite, non-negative values whose sum is numerically 1.";
+categoricalReverseStep::posterior =
+  "No finite normalized mixture of supported categorical posteriors can be constructed for the supplied state, time, and predicted x0 probabilities.";
+
+categoricalReverseStepValidated[
+  xt_,
+  t_Integer,
+  predictedX0Probabilities_List,
+  schedule_Association,
+  uniformNoise_
+] := Module[{reverseProbabilities},
+  reverseProbabilities = categoricalReverseProbabilitiesValidated[
+    xt,
+    t,
+    predictedX0Probabilities,
+    schedule
+  ];
+  If[reverseProbabilities === $Failed, Return[$Failed]];
+  categoricalSampleProbabilityVector[reverseProbabilities, uniformNoise]
+];
 
 categoricalReverseStep[
   xt_,
@@ -595,13 +622,38 @@ categoricalReverseStep[
   predictedX0Probabilities_List,
   schedule_Association
 ] := Module[{reverseProbabilities},
-  reverseProbabilities = categoricalReverseProbabilities[
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalReverseStep::schedule];
+    Return[$Failed]
+  ];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[categoricalReverseStep::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[
+    !IntegerQ[xt] ||
+      !TrueQ[1 <= xt <= schedule["CategoryCount"]],
+    Message[categoricalReverseStep::xt];
+    Return[$Failed]
+  ];
+  If[
+    !categoricalProbabilityVectorQ[
+      predictedX0Probabilities,
+      schedule["CategoryCount"]
+    ],
+    Message[categoricalReverseStep::probabilities];
+    Return[$Failed]
+  ];
+  reverseProbabilities = categoricalReverseProbabilitiesValidated[
     xt,
     t,
     predictedX0Probabilities,
     schedule
   ];
-  If[reverseProbabilities === $Failed, Return[$Failed]];
+  If[reverseProbabilities === $Failed,
+    Message[categoricalReverseStep::posterior];
+    Return[$Failed]
+  ];
   categoricalSampleProbabilityVector[reverseProbabilities, RandomReal[]]
 ];
 
@@ -612,18 +664,44 @@ categoricalReverseStep[
   schedule_Association,
   uniformNoise_
 ] := Module[{reverseProbabilities},
-  reverseProbabilities = categoricalReverseProbabilities[
-    xt,
-    t,
-    predictedX0Probabilities,
-    schedule
+  If[!categoricalScheduleQ[schedule],
+    Message[categoricalReverseStep::schedule];
+    Return[$Failed]
   ];
-  If[reverseProbabilities === $Failed, Return[$Failed]];
+  If[!TrueQ[1 <= t <= schedule["Steps"]],
+    Message[categoricalReverseStep::time, schedule["Steps"]];
+    Return[$Failed]
+  ];
+  If[
+    !IntegerQ[xt] ||
+      !TrueQ[1 <= xt <= schedule["CategoryCount"]],
+    Message[categoricalReverseStep::xt];
+    Return[$Failed]
+  ];
+  If[
+    !categoricalProbabilityVectorQ[
+      predictedX0Probabilities,
+      schedule["CategoryCount"]
+    ],
+    Message[categoricalReverseStep::probabilities];
+    Return[$Failed]
+  ];
   If[!categoricalUniformNoiseQ[uniformNoise, {}],
     Message[categoricalReverseStep::noise];
     Return[$Failed]
   ];
-  categoricalSampleProbabilityVector[reverseProbabilities, uniformNoise]
+  reverseProbabilities = categoricalReverseStepValidated[
+    xt,
+    t,
+    predictedX0Probabilities,
+    schedule,
+    uniformNoise
+  ];
+  If[reverseProbabilities === $Failed,
+    Message[categoricalReverseStep::posterior];
+    Return[$Failed]
+  ];
+  reverseProbabilities
 ];
 
 categoricalReverseStep[___] := (
@@ -647,6 +725,8 @@ categoricalSample::opts =
   "Options must use each of \"Seed\", \"Noises\", and \"ReturnTrajectory\" at most once with valid values.";
 categoricalSample::noises =
   "Explicit \"Noises\" must be a length-T list of finite real values in the half-open interval [0, 1), indexed by logical time.";
+categoricalSample::posterior =
+  "No finite normalized reverse distribution can be constructed from the predictor output at the current state and time.";
 categoricalSample::args =
   "categoricalSample expects a predictor callable, an Integer initial state, a categorical schedule, and optional rules.";
 
@@ -682,7 +762,7 @@ runCategoricalSampling[
       noises[[t]],
       RandomReal[]
     ];
-    state = categoricalReverseStep[
+    state = categoricalReverseStepValidated[
       state,
       t,
       predictedX0Probabilities,
@@ -690,6 +770,7 @@ runCategoricalSampling[
       noise
     ];
     If[state === $Failed,
+      Message[categoricalSample::posterior];
       failed = True;
       Break[]
     ];
@@ -817,7 +898,8 @@ runCategoricalTests[] := Module[
     samplerPredictor, samplerUniforms, samplerExpected, samplerResult,
     samplerTimeTrace, samplerAutomatic1, samplerAutomatic2,
     samplerSeeded1, samplerSeeded2, samplerDifferentSeed1,
-    samplerDifferentSeed2, samplerSeedSchedule
+    samplerDifferentSeed2, samplerSeedSchedule, validatedPosterior,
+    validatedReverse, validatedStep, validationTrace
   },
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
@@ -992,6 +1074,16 @@ runCategoricalTests[] := Module[
       Min[posterior] >= 0 &&
       Abs[Total[posterior] - 1.] < 10^-14
   ];
+  validatedPosterior = categoricalPosteriorValidated[
+    2,
+    3,
+    3,
+    posteriorSchedule
+  ];
+  assert[
+    "validated posterior helper is identical to the public API",
+    categoricalNumericArraysCloseQ[validatedPosterior, posterior]
+  ];
   assert[
     "reduces the t = 1 posterior to the clean-state point mass",
     categoricalPosterior[2, 3, 1, posteriorSchedule] === {0., 1., 0.}
@@ -1066,6 +1158,19 @@ runCategoricalTests[] := Module[
       Length[reverseProbabilities] === 3 &&
       Min[reverseProbabilities] >= 0 &&
       Abs[Total[reverseProbabilities] - 1.] < 10^-14
+  ];
+  validatedReverse = categoricalReverseProbabilitiesValidated[
+    3,
+    3,
+    {0.2, 0.5, 0.3},
+    posteriorSchedule
+  ];
+  assert[
+    "validated reverse-probability helper is identical to the public API",
+    categoricalNumericArraysCloseQ[
+      validatedReverse,
+      reverseProbabilities
+    ]
   ];
   oneHotReverse = categoricalReverseProbabilities[
     3,
@@ -1221,6 +1326,23 @@ runCategoricalTests[] := Module[
         1. - 10^-12
       ] === 3
   ];
+  validatedStep = categoricalReverseStepValidated[
+    2,
+    1,
+    predictedX0,
+    reverseStepSchedule,
+    0.3
+  ];
+  assert[
+    "validated reverse-step helper is identical to the public API",
+    validatedStep === categoricalReverseStep[
+      2,
+      1,
+      predictedX0,
+      reverseStepSchedule,
+      0.3
+    ]
+  ];
   reverseStepSamples = BlockRandom[
     SeedRandom[9127];
     {
@@ -1342,6 +1464,20 @@ runCategoricalTests[] := Module[
       samplerSchedule,
       "Noises" -> samplerUniforms
     ] === samplerExpected
+  ];
+  validationTrace = Trace[
+    categoricalSample[
+      samplerPredictor,
+      3,
+      samplerSchedule,
+      "Noises" -> samplerUniforms
+    ],
+    _categoricalScheduleQ,
+    TraceInternal -> True
+  ];
+  assert[
+    "validates the categorical schedule once before the sampler loop",
+    Count[validationTrace, _categoricalScheduleQ, Infinity] === 1
   ];
   samplerResult = categoricalSample[
     samplerPredictor,
