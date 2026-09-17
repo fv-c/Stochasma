@@ -70,7 +70,7 @@ ddimEtaCompatibleQ[eta_, timesteps_List, schedule_Association] := Module[
   ]
 ];
 
-ddimStep[
+ddimStepValidated[
   xt_,
   t_Integer,
   previousTime_Integer,
@@ -81,8 +81,12 @@ ddimStep[
 ] := Module[
   {predictedX0, alphaBarT, alphaBarPrevious, sigma,
     directionVariance},
-  predictedX0 = predictCleanSample[xt, t, predictedNoise, schedule];
-  If[predictedX0 === $Failed, Return[$Failed]];
+  predictedX0 = predictCleanSampleValidated[
+    xt,
+    t,
+    predictedNoise,
+    schedule
+  ];
   alphaBarT = schedule["AlphaBars"][[t]];
   alphaBarPrevious = If[
     previousTime == 0,
@@ -135,7 +139,7 @@ runDDIMSampling[
       TrueQ[eta == 0] || previousTime == 0, 0. state,
       True, randomNormalLike[state]
     ];
-    state = ddimStep[
+    state = ddimStepValidated[
       state,
       t,
       previousTime,
@@ -268,7 +272,7 @@ runDDIMTests[] := Module[
     samples, stochasticInitial, automatic1, automatic2, seeded1, seeded2,
     differentSeed, expectedNext, actualNext, changedFinalNoise,
     sigmaSquared, ancestralPredictor, ddpmNoises, ddimNoises, ddpmResult,
-    ddimResult},
+    ddimResult, validationTrace},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ ddim/ddimSample: ", label];
@@ -292,6 +296,21 @@ runDDIMTests[] := Module[
     "Automatic uses every logical timestep and appends time zero",
     fullResult["Timesteps"] === Append[fullTimesteps, 0] &&
       Length[fullResult["Trajectory"]] === Length[fullResult["Timesteps"]]
+  ];
+  validationTrace = Trace[
+    ddimSample[
+      predictor,
+      initialNoise,
+      schedule,
+      "Eta" -> 0.,
+      "Noises" -> fullNoises
+    ],
+    _diffusionScheduleQ,
+    TraceInternal -> True
+  ];
+  assert[
+    "validates the diffusion schedule once before the DDIM loop",
+    Count[validationTrace, _diffusionScheduleQ, Infinity] === 1
   ];
   fullTrace = Reap[
     ddimSample[
