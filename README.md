@@ -16,6 +16,7 @@ Python dependency.
 ## Status
 
 The latest stable release is `0.4.0`.
+Development version `0.5.0` is unreleased.
 
 Stable capabilities:
 
