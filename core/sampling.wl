@@ -53,7 +53,7 @@ runDDPMSampling[
       t == 1, 0. state,
       True, randomNormalLike[state]
     ];
-    state = reverseDiffuseStep[
+    state = reverseDiffuseStepValidated[
       state,
       t,
       predictedNoise,
@@ -150,7 +150,7 @@ runSamplingTests[] := Module[
   {passed = 0, assert, schedule, initialNoise, predictor, stepNoises,
     expected, sample, result, timeTrace, seeded1, seeded2, differentSeed,
     stochasticInitial, automatic1, automatic2, replay1, replay2,
-    expectedNext, actualNext, samples},
+    expectedNext, actualNext, samples, validationTrace},
   assert[label_, expression_] := If[TrueQ[expression],
     passed++,
     Print["✗ sampling/ddpmSample: ", label];
@@ -183,6 +183,20 @@ runSamplingTests[] := Module[
   assert[
     "explicit noises reproduce the direct T-to-zero reverse loop",
     numericSamplesCloseQ[sample, expected]
+  ];
+  validationTrace = Trace[
+    ddpmSample[
+      predictor,
+      initialNoise,
+      schedule,
+      "Noises" -> stepNoises
+    ],
+    _diffusionScheduleQ,
+    TraceInternal -> True
+  ];
+  assert[
+    "validates the diffusion schedule once before the DDPM loop",
+    Count[validationTrace, _diffusionScheduleQ, Infinity] === 1
   ];
   result = ddpmSample[
     predictor,
