@@ -27,14 +27,15 @@ branch.
 - latent diffusion:
   - [x] encoder-backed latent-space training samples;
   - [x] decoded latent-space sampling;
-- conditioning interfaces.
+  - [x] explicit DDPM/DDIM sampler selection and isolated sampler options;
+- [x] categorical predicted-`x0` mixture-of-posteriors correction;
+- [x] validation-once sampler hot paths;
+- [x] test-suite extraction from production modules;
+- [ ] conditioning interfaces.
 
 ## Future adapters
 
-- structured symbolic data;
-- Temporal System `stemData`;
-- score-space diffusion.
+- structured symbolic data.
 
-Application adapters remain outside the Stochasma core. A future Temporal
-System integration will load both paclets independently and translate external
-`stemData` into a representation accepted by Stochasma.
+Application adapters remain outside the Stochasma core and must not introduce
+domain-specific dependencies into the paclet.

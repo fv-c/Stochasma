@@ -7,6 +7,10 @@ model-facing utilities and DDIM without coupling the core to a network
 architecture. Version 0.3 adds scalar categorical diffusion and reverse
 sampling.
 
+Development version 0.4 adds a sampler-independent latent composition layer,
+corrects the categorical predicted-`x0` reverse parameterization, and keeps
+deep schedule validation outside sampler hot loops.
+
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no image, music, or other application-domain assumptions and has no
 Python dependency.
@@ -18,7 +22,12 @@ unreleased and begins the latent-diffusion composition layer.
 
 Development version `0.4.0` currently adds:
 
-- encoder-backed latent-space epsilon-prediction training samples.
+- encoder-backed latent-space epsilon-prediction training samples;
+- decoded latent sampling through either DDPM or DDIM;
+- predicted-`x0` categorical reverse sampling as a mixture of exact
+  posteriors;
+- validation-once private hot paths for Gaussian and categorical samplers;
+- test suites stored separately from production modules.
 
 Version `0.3.0` provides:
 
@@ -126,10 +135,27 @@ x0 = categoricalSample[
 ];
 ```
 
-`predictedX0` is a model-predicted distribution over clean categories.
-Stochasma combines it with `Q̄_(t-1)` and `Q_t`, then normalizes the resulting
-joint-marginalized reverse weights once at the end. It is not a mixture of
-individually normalized exact posteriors.
+`predictedX0` is a model-predicted distribution over clean categories. For
+each supported clean-state candidate `i`, Stochasma first constructs and
+normalizes the exact posterior
+
+```text
+q(x_(t-1) | x_t, x_0 = i)
+```
+
+and then forms
+
+```text
+p_theta(x_(t-1) | x_t)
+  = Sum_i p_theta(x_0 = i | x_t, t)
+      q(x_(t-1) | x_t, x_0 = i).
+```
+
+This mixture is not the previous marginalize-joints-then-normalize operation.
+A zero-weight candidate with undefined posterior is ignored. If positive
+predicted mass is incompatible with `x_t`, the constructible components are
+renormalized over their remaining predicted mass; the function returns
+`$Failed` only when no supported positive-weight component remains.
 
 `categoricalSample` interprets its explicit `initialState` as `x_T` and never
 generates a terminal prior internally: arbitrary transition kernels need not
@@ -217,7 +243,7 @@ Each result has the same `"Clean"`, `"Noisy"`, `"Time"`, and `"Noise"` fields
 as `makeDiffusionTrainingSample`, so callers remain free to adapt them to a
 specific training framework or network port layout.
 
-## Latent diffusion training
+## Latent diffusion
 
 `makeLatentDiffusionTrainingSample` evaluates a caller-supplied encoder once
 and applies the existing Gaussian training objective to its output. The source
@@ -240,9 +266,9 @@ Pass a fifth argument for deterministic explicit noise matching the encoded
 latent. Automatic noise consumes the caller's current random stream exactly as
 `makeDiffusionTrainingSample` does.
 
-`latentDiffusionSample` runs the existing ancestral DDPM sampler entirely in
-latent space, then evaluates a caller-supplied decoder exactly once on the
-final latent `z0`:
+`latentDiffusionSample` runs a selected sampler entirely in latent space, then
+evaluates a caller-supplied decoder exactly once on the final latent `z0`.
+The default sampler is `ddpmSample`:
 
 ```wl
 decodedSample = latentDiffusionSample[
@@ -250,14 +276,36 @@ decodedSample = latentDiffusionSample[
   predictor,
   initialLatentNoise,
   schedule,
-  "Seed" -> 1234
+  "SamplerOptions" -> {
+    "Seed" -> 1234
+  }
 ];
 ```
 
-It accepts the same `"Seed"`, `"Noises"`, and `"ReturnTrajectory"` options as
-`ddpmSample`. Trajectory mode returns `"Sample"` for the decoded value,
-`"LatentSample"` for `z0`, and `"LatentTrajectory"` for `{zT, ..., z0}`.
-Intermediate noisy latents are never decoded.
+Choose DDIM explicitly without duplicating latent-layer logic:
+
+```wl
+decodedSample = latentDiffusionSample[
+  decoder,
+  predictor,
+  initialLatent,
+  schedule,
+  "Sampler" -> ddimSample,
+  "SamplerOptions" -> {
+    "Eta" -> 0.,
+    "Timesteps" -> {1000, 800, 600, 400, 200, 1},
+    "ReturnTrajectory" -> True
+  }
+];
+```
+
+The wrapper accepts only `"Sampler"` and `"SamplerOptions"`; unknown wrapper
+options and options rejected by the selected sampler produce a message and
+`$Failed`. Trajectory mode returns `"Sample"` for the decoded value,
+`"LatentSample"` for `z0`, and `"LatentTrajectory"` for the latent-only
+trajectory. If the selected sampler returns `"Timesteps"`, the wrapper
+preserves them unchanged. Intermediate latents are never decoded, and a
+sampler failure prevents decoder evaluation.
 
 ## Local installation and loading
 
@@ -366,6 +414,11 @@ as `{xStart, ..., x0}` and `{tStart, ..., 0}`.
 wolframscript -file tests/run_all_tests.wls
 wolframscript -file examples/gaussian_1d.wls
 ```
+
+The production files in `core/` and `models/` contain no embedded suites.
+Module tests live in `tests/*.wlt`; the headless runner uses Wolfram
+`VerificationTest` and `TestReport`, includes a clean paclet-loading/API check,
+and returns a nonzero exit code on failure.
 
 The test suite requires a locally installed and activated Wolfram Engine with
 `wolframscript` on `PATH`. No GitHub-hosted workflow is included because that

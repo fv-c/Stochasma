@@ -118,7 +118,7 @@ latentSamplerQ[sampler_] := sampler === ddpmSample || sampler === ddimSample;
 latentDiffusionSample[
   decoder_,
   predictor_,
-  initialLatentNoise_,
+  initialLatent_,
   schedule_Association,
   opts___
 ] := Module[
@@ -154,7 +154,7 @@ latentDiffusionSample[
   ];
   latentResult = sampler[
     predictor,
-    initialLatentNoise,
+    initialLatent,
     schedule,
     Sequence @@ samplerOptions
   ];

@@ -9,8 +9,9 @@ adds model-facing utilities and DDIM sampling while preserving that separation.
 Version 0.3 adds a discrete diffusion layer with categorical transition
 kernels, explicit transition schedules, shape-preserving time-indexed forward
 sampling, exact posteriors, and scalar predicted-`x0` reverse sampling.
-Version 0.4 begins a latent-diffusion composition layer whose encoders remain
-external to the Gaussian core.
+Version 0.4 adds a latent-diffusion composition layer whose encoders, decoders,
+and sampler choice remain external to the Gaussian core. It also separates
+public structural validation from private validated sampler hot paths.
 
 ## Layers
 
@@ -58,10 +59,29 @@ process and epsilon target construction to the Gaussian training primitive.
 The source input may have any representation accepted by the encoder; only the
 encoded latent crosses into the diffusion core.
 
-Latent-diffusion sampling delegates the complete ancestral reverse process to
-`ddpmSample` and evaluates a caller-supplied decoder exactly once on the final
-latent `z0`. When requested, the reverse trajectory remains in latent space;
-intermediate noisy latents are not decoded.
+Latent-diffusion sampling delegates the complete reverse process to an
+explicitly selected `ddpmSample` or `ddimSample` and evaluates a caller-supplied
+decoder exactly once on the final latent `z0`. Wrapper options are separated
+from the selected sampler's rules through `"SamplerOptions"`. When requested,
+the reverse trajectory remains in latent space; intermediate noisy latents are
+not decoded. Timestep metadata is preserved only when the selected sampler
+returns it.
+
+## Validation boundary and sampler hot paths
+
+Public functions remain the trust boundary. They validate complete Gaussian or
+categorical schedules, logical times, sample shapes, probabilities, and option
+sets before entering a sampler. Once validated, sampler loops call private
+helpers such as `reverseMeanVarianceValidated`,
+`reverseDiffuseStepValidated`, `categoricalPosteriorValidated`, and
+`categoricalReverseStepValidated`. These helpers assume the structural objects
+are already valid and do not rerun `diffusionScheduleQ` or
+`categoricalScheduleQ` at every timestep.
+
+This split does not weaken standalone public calls: public reverse-step and
+posterior APIs still reject malformed schedules with a message and `$Failed`.
+It also does not change random-stream consumption; private hot paths receive
+the same automatic, seeded, or explicit noise selected by the public sampler.
 
 ## Time convention
 
@@ -108,22 +128,27 @@ q(x_(t-1) = j | x_t = k, x_0 = i)
 
 At `t = 1`, `Q̄_0` is the identity matrix and does not index the schedule.
 The model predicts a probability distribution on `x_0`, rather than the
-reverse-step posterior directly. The canonical predicted-`x0` reverse
-parameterization marginalizes the joint probabilities and normalizes once:
+reverse-step posterior directly. The predicted-`x0` reverse parameterization
+is a mixture of exact, individually normalized posteriors:
 
 ```text
 p_theta(x_(t-1) | x_t)
-  ∝ Σ_i p_theta(x_0 = i | x_t, t) q(x_(t-1), x_t | x_0 = i)
-
-r = [p_theta(x_0 | x_t, t) . Q̄_(t-1)] ⊙ Q_t[:, x_t]
-
-p_theta(x_(t-1) | x_t) = r / sum(r)
+  = Σ_i p_theta(x_0 = i | x_t, t)
+      q(x_(t-1) | x_t, x_0 = i)
 ```
 
-Here `⊙` denotes elementwise multiplication. At `t = 1`, `Q̄_0` is the
-identity, so the predicted clean-state probabilities are still weighted by
-the current transition likelihood before normalization. `categoricalReverseStep`
-samples once from this joint-marginalized probability vector.
+Each component posterior is normalized before its predicted probability is
+applied. With fully supported `Q_1`, the `t = 1` posteriors are clean-state
+point masses, so the reverse distribution equals the predicted clean-state
+distribution. This is deliberately distinct from marginalizing unnormalized
+joints and applying one normalization afterward.
+
+If a candidate has zero predicted weight, an undefined zero-support posterior
+for that candidate is never evaluated. Positive predicted mass on incompatible
+candidates is excluded, and the remaining supported mixture weights are
+renormalized. The operation fails only when no positive-weight supported
+posterior can be constructed. `categoricalReverseStep` samples once from the
+resulting mixture.
 
 The scalar categorical reverse process is composed as follows:
 
@@ -165,6 +190,8 @@ categorical transition at `t = 1` remains stochastic in general.
 - The core has no dependency on `NetGraph`, `NetTrain`, or a model architecture.
 - Invalid parameters produce a message and `$Failed`; they are not silently
   clipped into a valid range.
+- Public samplers validate structural schedules once per call; private loop
+  helpers do not repeat deep structural validation.
 - Categorical states are represented by integer labels `1..K`, and categorical
   transition kernels are finite, non-negative, square, and row-stochastic.
 - Categorical transition products follow the row-vector order
@@ -192,5 +219,9 @@ core/categorical.wl categorical kernels, schedules, and forward and reverse samp
 models/embeddings.wl deterministic sinusoidal logical-time features
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data
-models/latent.wl    encoder-backed training and decoded DDPM sampling
+models/latent.wl    encoder-backed training and decoded DDPM/DDIM composition
 ```
+
+Production modules contain no test suites. Headless tests live under `tests/`
+and are loaded only by `tests/run_all_tests.wls`; `Needs["Stochasma`"]` loads
+only public APIs and private implementation helpers.

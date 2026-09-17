@@ -2,10 +2,23 @@
 
 ## 0.4.0 — Unreleased
 
+- Correct the categorical predicted-`x0` reverse parameterization to mix
+  individually normalized exact posteriors instead of marginalizing joint
+  weights before a single normalization; define support-zero behavior and
+  cover it with regression tests.
+- Validate Gaussian and categorical schedules once at each public sampler
+  boundary, then use private validated helpers inside DDPM, DDIM, and
+  categorical reverse loops without changing random-stream semantics.
 - Add encoder-backed latent-space epsilon-prediction training samples with
   automatic or explicit latent noise.
-- Add decoded ancestral DDPM sampling with final-latent-only decoding and an
-  optional latent reverse trajectory.
+- Generalize decoded latent sampling through explicit `"Sampler"` and
+  `"SamplerOptions"` wrapper options, supporting both DDPM and DDIM with
+  final-latent-only decoding and preserved latent trajectory metadata. The
+  earlier unreleased top-level DDPM sampler options are replaced by this
+  unambiguous nested option scheme.
+- Move all tests from `core/*.wl` and `models/*.wl` into `tests/*.wlt`; add a
+  native headless `TestReport` runner and clean paclet-loading/public-API
+  integration checks.
 
 ## 0.3.0 — 2026-09-16
 
@@ -18,8 +31,8 @@
 - Add time-indexed categorical forward diffusion through cumulative `Qbar_t`
   kernels.
 - Add exact categorical posterior probabilities.
-- Add categorical reverse-step sampling and canonical joint-marginalized
-  predicted-`x0` reverse probabilities.
+- Add categorical reverse-step sampling and the original single-normalization
+  predicted-`x0` reverse probabilities, superseded by the 0.4.0 correction.
 - Add a full scalar categorical reverse sampler with seeded, automatic, and
   explicit-noise randomness.
 
