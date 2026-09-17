@@ -28,7 +28,7 @@ branch.
   - [x] encoder-backed latent-space training samples;
   - [x] decoded latent-space sampling;
   - [x] explicit DDPM/DDIM sampler selection and isolated sampler options;
-- [x] categorical predicted-`x0` mixture-of-posteriors correction;
+- [x] canonical D3PM predicted-`x0` categorical reverse parameterization;
 - [x] validation-once sampler hot paths;
 - [x] test-suite extraction from production modules;
 - [ ] conditioning interfaces.

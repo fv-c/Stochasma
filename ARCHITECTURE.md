@@ -129,26 +129,26 @@ q(x_(t-1) = j | x_t = k, x_0 = i)
 At `t = 1`, `Q̄_0` is the identity matrix and does not index the schedule.
 The model predicts a probability distribution on `x_0`, rather than the
 reverse-step posterior directly. The predicted-`x0` reverse parameterization
-is a mixture of exact, individually normalized posteriors:
+for `t > 1` marginalizes the joint weights before one final normalization:
 
 ```text
 p_theta(x_(t-1) | x_t)
-  = Σ_i p_theta(x_0 = i | x_t, t)
-      q(x_(t-1) | x_t, x_0 = i)
+  ∝ Σ_i p_theta(x_0 = i | x_t, t)
+      q(x_(t-1), x_t | x_0 = i)
 ```
 
-Each component posterior is normalized before its predicted probability is
-applied. With fully supported `Q_1`, the `t = 1` posteriors are clean-state
-point masses, so the reverse distribution equals the predicted clean-state
-distribution. This is deliberately distinct from marginalizing unnormalized
-joints and applying one normalization afterward.
+In row-vector form, this is
 
-If a candidate has zero predicted weight, an undefined zero-support posterior
-for that candidate is never evaluated. Positive predicted mass on incompatible
-candidates is excluded, and the remaining supported mixture weights are
-renormalized. The operation fails only when no positive-weight supported
-posterior can be constructed. `categoricalReverseStep` samples once from the
-resulting mixture.
+```text
+(p_theta(x_0 | x_t, t) . Qbar_(t-1)) * Q_t[:, x_t]
+```
+
+with elementwise multiplication and one normalization of the resulting
+vector. At `t = 1`, the reverse distribution is the predicted clean-state
+distribution `p_theta(x_0 | x_1)` directly. At `t > 1`, zero or non-finite
+total joint weight is an error; no predicted mass is discarded or
+pre-normalized. `categoricalReverseStep` samples once from the resulting
+distribution.
 
 The scalar categorical reverse process is composed as follows:
 

@@ -19,7 +19,7 @@ categoricalPosterior::usage =
   "categoricalPosterior[x0, xt, t, schedule] returns the exact probability vector q(x_(t-1) | x_t, x_0) for scalar categorical states at logical time t.";
 
 categoricalReverseProbabilities::usage =
-  "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] constructs the predicted-x0 categorical reverse distribution as a mixture of the individually normalized exact posteriors q(x_(t-1) | x_t, x_0 = i). Zero-weight undefined components are ignored; incompatible positive-weight components are excluded and the remaining mixture weights are renormalized.";
+  "categoricalReverseProbabilities[xt, t, predictedX0Probabilities, schedule] constructs the predicted-x0 categorical reverse distribution by marginalizing the joint q(x_(t-1), x_t | x_0) under the predicted clean-state probabilities and normalizing once; at t = 1 it returns the predicted clean-state distribution directly.";
 
 categoricalReverseStep::usage =
   "categoricalReverseStep[xt, t, predictedX0Probabilities, schedule] samples x_(t-1) from the predicted-x0 categorical reverse probabilities using the current random stream. categoricalReverseStep[xt, t, predictedX0Probabilities, schedule, uniformNoise] uses an explicit uniform variate in the half-open interval [0, 1) and is deterministic.";
@@ -496,7 +496,7 @@ categoricalReverseProbabilities::xt =
 categoricalReverseProbabilities::probabilities =
   "Predicted x0 probabilities must be a length-K list of finite, non-negative values whose sum is numerically 1.";
 categoricalReverseProbabilities::posterior =
-  "No finite normalized mixture of supported categorical posteriors can be constructed for the supplied state, time, and predicted x0 probabilities.";
+  "The predicted-x0 categorical reverse distribution has zero or non-finite normalization for the supplied state and time.";
 
 categoricalReverseProbabilitiesValidated[
   xt_,
@@ -504,27 +504,15 @@ categoricalReverseProbabilitiesValidated[
   predictedX0Probabilities_List,
   schedule_Association
 ] := Module[
-  {
-    categoryCount, numericPredicted, weightedPosteriors,
-    posterior, reverseProbabilities
-  },
+  {categoryCount, priorPrevious, likelihood, reverseProbabilities},
   categoryCount = schedule["CategoryCount"];
-  numericPredicted = N[predictedX0Probabilities];
-  weightedPosteriors = Table[
-    If[!TrueQ[numericPredicted[[x0]] > 0],
-      Nothing,
-      posterior = categoricalPosteriorValidated[x0, xt, t, schedule];
-      If[
-        posterior === $Failed,
-        Nothing,
-        numericPredicted[[x0]] posterior
-      ]
-    ],
-    {x0, 1, categoryCount}
-  ];
-  If[weightedPosteriors === {}, Return[$Failed]];
+  If[t == 1, Return[N[predictedX0Probabilities]]];
+  priorPrevious =
+    N[predictedX0Probabilities] .
+      schedule["CumulativeTransitionKernels"][[t - 1]];
+  likelihood = schedule["TransitionKernels"][[t, All, xt]];
   reverseProbabilities = normalizeCategoricalWeights[
-    Total[weightedPosteriors]
+    N[priorPrevious likelihood]
   ];
   If[
     reverseProbabilities === $Failed ||
@@ -597,7 +585,7 @@ categoricalReverseStep::xt =
 categoricalReverseStep::probabilities =
   "Predicted x0 probabilities must be a length-K list of finite, non-negative values whose sum is numerically 1.";
 categoricalReverseStep::posterior =
-  "No finite normalized mixture of supported categorical posteriors can be constructed for the supplied state, time, and predicted x0 probabilities.";
+  "The predicted-x0 categorical reverse distribution has zero or non-finite normalization for the supplied state and time.";
 
 categoricalReverseStepValidated[
   xt_,

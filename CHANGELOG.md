@@ -2,10 +2,9 @@
 
 ## 0.4.0 — Unreleased
 
-- Correct the categorical predicted-`x0` reverse parameterization to mix
-  individually normalized exact posteriors instead of marginalizing joint
-  weights before a single normalization; define support-zero behavior and
-  cover it with regression tests.
+- Refine the categorical predicted-`x0` reverse implementation to follow the
+  D3PM joint-marginalization parameterization, with direct predicted-`x0`
+  output at the final reverse step.
 - Validate Gaussian and categorical schedules once at each public sampler
   boundary, then use private validated helpers inside DDPM, DDIM, and
   categorical reverse loops without changing random-stream semantics.
@@ -31,8 +30,8 @@
 - Add time-indexed categorical forward diffusion through cumulative `Qbar_t`
   kernels.
 - Add exact categorical posterior probabilities.
-- Add categorical reverse-step sampling and the original single-normalization
-  predicted-`x0` reverse probabilities, superseded by the 0.4.0 correction.
+- Add categorical reverse-step sampling and predicted-`x0` reverse
+  probabilities.
 - Add a full scalar categorical reverse sampler with seeded, automatic, and
   explicit-noise randomness.
 

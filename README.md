@@ -24,8 +24,7 @@ Development version `0.4.0` currently adds:
 
 - encoder-backed latent-space epsilon-prediction training samples;
 - decoded latent sampling through either DDPM or DDIM;
-- predicted-`x0` categorical reverse sampling as a mixture of exact
-  posteriors;
+- canonical D3PM predicted-`x0` categorical reverse sampling;
 - validation-once private hot paths for Gaussian and categorical samplers;
 - test suites stored separately from production modules.
 
@@ -136,26 +135,19 @@ x0 = categoricalSample[
 ```
 
 `predictedX0` is a model-predicted distribution over clean categories. For
-each supported clean-state candidate `i`, Stochasma first constructs and
-normalizes the exact posterior
-
-```text
-q(x_(t-1) | x_t, x_0 = i)
-```
-
-and then forms
+`t > 1`, Stochasma uses the D3PM predicted-`x0` parameterization
 
 ```text
 p_theta(x_(t-1) | x_t)
-  = Sum_i p_theta(x_0 = i | x_t, t)
-      q(x_(t-1) | x_t, x_0 = i).
+  proportional to Sum_i p_theta(x_0 = i | x_t, t)
+    q(x_(t-1), x_t | x_0 = i).
 ```
 
-This mixture is not the previous marginalize-joints-then-normalize operation.
-A zero-weight candidate with undefined posterior is ignored. If positive
-predicted mass is incompatible with `x_t`, the constructible components are
-renormalized over their remaining predicted mass; the function returns
-`$Failed` only when no supported positive-weight component remains.
+Equivalently, it computes `predictedX0 . Qbar_(t-1)`, multiplies that row
+vector elementwise by `Q_t[:, xt]`, and normalizes once. At `t = 1`, it
+returns `predictedX0` directly. If the combined unnormalized weights at
+`t > 1` have zero or non-finite normalization, the reverse operation returns
+`$Failed` without a fallback.
 
 `categoricalSample` interprets its explicit `initialState` as `x_T` and never
 generates a terminal prior internally: arbitrary transition kernels need not
