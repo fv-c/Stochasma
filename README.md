@@ -40,7 +40,26 @@ required type, keys, shape, encoding, modality, or unconditional sentinel.
 The expected prediction remains a property of the consumer. Gaussian
 consumers expect finite real epsilon predictions matching `xt`; categorical
 consumers expect valid clean-state probability vectors. Public samplers still
-accept the two-argument `predictor[xt, t]` protocol at this stage.
+accept the two-argument `predictor[xt, t]` protocol.
+
+Use `makeConditionedPredictor` to bind one conditioning value without teaching
+the sampler about its representation:
+
+```wl
+conditionedPredictor = Function[{xt, t, conditioning},
+  conditioning["Scale"] xt
+];
+
+predictor = makeConditionedPredictor[
+  conditionedPredictor,
+  <|"Scale" -> 0.25|>
+];
+
+sample = ddpmSample[predictor, initialNoise, schedule];
+```
+
+The wrapper passes the value and prediction through unchanged. The selected
+sampler remains responsible for validating the prediction it consumes.
 
 ## Categorical diffusion
 

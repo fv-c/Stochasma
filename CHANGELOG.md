@@ -4,6 +4,8 @@
 
 - Define a representation-agnostic three-argument conditioned-predictor
   protocol while preserving existing sampler signatures.
+- Add conditioned-predictor composition by binding one opaque conditioning
+  value to the standard two-argument sampler protocol.
 
 ## 0.4.0 — 2026-09-17
 

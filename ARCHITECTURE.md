@@ -85,6 +85,11 @@ The downstream public consumer remains responsible for validating that output.
 The protocol itself does not change the existing `predictor[xt, t]` signatures
 accepted by public samplers.
 
+`makeConditionedPredictor` binds one opaque conditioning value and returns a
+standard two-argument predictor. The wrapper performs no representation- or
+consumer-specific validation and evaluates the underlying conditioned
+predictor exactly once for each `predictor[xt, t]` call.
+
 ## Validation boundary and sampler hot paths
 
 Public functions remain the trust boundary. They validate complete Gaussian or
@@ -237,6 +242,7 @@ core/sampling.wl    predictor-driven DDPM sampling loop
 core/ddim.wl        predictor-driven full-step or subsampled DDIM sampling
 core/categorical.wl categorical kernels, schedules, and forward and reverse sampling
 models/embeddings.wl deterministic sinusoidal logical-time features
+models/conditioning.wl opaque conditioning and predictor composition
 models/adapters.wl  Wolfram neural-network predictor bridge
 models/training.wl  batched epsilon-prediction training data
 models/latent.wl    encoder-backed training and decoded DDPM/DDIM composition

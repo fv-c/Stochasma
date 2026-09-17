@@ -13,6 +13,7 @@ testFiles = {
   "ddim.wlt",
   "categorical.wlt",
   "embeddings.wlt",
+  "conditioning.wlt",
   "adapters.wlt",
   "training.wlt",
   "latent.wlt",
@@ -63,6 +64,11 @@ testObjects = {
     TestID -> "embeddings"
   ],
   VerificationTest[
+    Stochasma`Private`runConditioningTests[],
+    11,
+    TestID -> "conditioning"
+  ],
+  VerificationTest[
     Stochasma`Private`runAdaptersTests[],
     12,
     TestID -> "adapters"
@@ -89,7 +95,7 @@ report = TestReport[testObjects];
 If[
   report["TestsFailedCount"] === 0 &&
     report["TestsSucceededCount"] === Length[testObjects],
-  Print["✓ all tests — 282 tests passed"];
+  Print["✓ all tests — 293 tests passed"];
   Exit[0],
   Print[
     "✗ all tests: ",
