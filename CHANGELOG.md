@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — 2026-09-17
+## 0.4.0 — Unreleased
 
 - Use the canonical D3PM predicted-`x0` reverse process, including direct
   predicted-`x0` behavior at the final categorical reverse step.

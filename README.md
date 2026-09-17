@@ -5,9 +5,10 @@ primitives. Version 0.1 implements Gaussian diffusion / DDPM while keeping
 neural-network models and application adapters external. Version 0.2 adds
 model-facing utilities and DDIM without coupling the core to a network
 architecture. Version 0.3 adds scalar categorical diffusion and reverse
-sampling. Version 0.4 adds canonical D3PM predicted-`x0` reverse sampling,
-validation-once sampler hot paths, and sampler-selectable DDPM/DDIM latent
-composition while keeping production code separate from the test suites.
+sampling. The unreleased Version 0.4 development line adds canonical D3PM
+predicted-`x0` reverse sampling, validation-once sampler hot paths, and
+sampler-selectable DDPM/DDIM latent composition while keeping production code
+separate from the test suites.
 
 The core operates on finite real numeric scalars and arrays of arbitrary rank.
 It makes no application-domain or data-representation assumptions and has no
@@ -15,9 +16,11 @@ Python dependency.
 
 ## Status
 
-The latest stable release is `0.4.0`.
+The latest stable release is `0.3.0`.
 
-Stable capabilities:
+Development version `0.4.0` is unreleased.
+
+Current development capabilities:
 
 - Gaussian diffusion;
 - DDPM;
